@@ -55,11 +55,9 @@ pub fn trap_handler() -> ! {
             cx.x[10] = result as usize;
         }
         Trap::Exception(Exception::StoreFault)
-        | Trap::Exception(Exception::StorePageFault)
         | Trap::Exception(Exception::InstructionFault)
         | Trap::Exception(Exception::InstructionPageFault)
-        | Trap::Exception(Exception::LoadFault)
-        | Trap::Exception(Exception::LoadPageFault) => {
+        | Trap::Exception(Exception::LoadFault) => {
             /*
             println!(
                 "[kernel] {:?} in application, bad addr = {:#x}, bad instruction = {:#x}, kernel killed it.",
@@ -69,6 +67,10 @@ pub fn trap_handler() -> ! {
             );
             */
             current_add_signal(SignalFlags::SIGSEGV);
+        }
+        Trap::Exception(Exception::StorePageFault)
+        | Trap::Exception(Exception::LoadPageFault) => {
+            
         }
         Trap::Exception(Exception::IllegalInstruction) => {
             current_add_signal(SignalFlags::SIGILL);
