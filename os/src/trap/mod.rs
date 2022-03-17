@@ -6,6 +6,7 @@ use crate::task::{
     check_signals_of_current, current_add_signal, current_trap_cx, current_trap_cx_user_va,
     current_user_token, exit_current_and_run_next, suspend_current_and_run_next, SignalFlags,
 };
+use crate::mm::{do_pgfault};
 use crate::timer::{check_timer, set_next_trigger};
 use core::arch::{asm, global_asm};
 use riscv::register::{
@@ -70,7 +71,20 @@ pub fn trap_handler() -> ! {
         }
         Trap::Exception(Exception::StorePageFault)
         | Trap::Exception(Exception::LoadPageFault) => {
-            
+            println!("!!!!!!!!!!!!!!!!!!!!!!PageFault!!!!!!!!!!!!!!!!!!!!!!!");
+            // println!(
+            //     "[kernel] {:?} in application, bad addr = {:#x}, bad instruction = {:#x}, kernel killed it.",
+            //     scause.cause(),
+            //     stval,
+            //     current_trap_cx().sepc,
+            // );
+            // current_add_signal(SignalFlags::SIGSEGV);
+            if do_pgfault(stval) {
+                
+            }
+            else {
+                current_add_signal(SignalFlags::SIGSEGV);
+            }
         }
         Trap::Exception(Exception::IllegalInstruction) => {
             current_add_signal(SignalFlags::SIGILL);

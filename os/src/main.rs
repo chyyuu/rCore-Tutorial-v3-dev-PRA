@@ -55,6 +55,7 @@ pub fn rust_main() -> ! {
     timer::set_next_trigger();
     fs::list_apps();
     task::add_initproc();
+    // drivers::ide_test();
     task::run_tasks();
     panic!("Unreachable in rust_main!");
 }

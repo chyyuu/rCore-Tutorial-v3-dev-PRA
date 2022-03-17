@@ -2,6 +2,7 @@ use super::{frame_alloc, FrameTracker};
 use super::{PTEFlags, PageTable, PageTableEntry};
 use super::{PhysAddr, PhysPageNum, VirtAddr, VirtPageNum};
 use super::{StepByOne, VPNRange};
+use super::{P2V_MAP};
 use crate::config::{MEMORY_END, MMIO, PAGE_SIZE, TRAMPOLINE};
 use crate::sync::UPSafeCell;
 use alloc::collections::BTreeMap;
@@ -34,8 +35,8 @@ pub fn kernel_token() -> usize {
 }
 
 pub struct MemorySet {
-    page_table: PageTable,
-    areas: Vec<MapArea>,
+    pub page_table: PageTable,
+    pub areas: Vec<MapArea>,
 }
 
 impl MemorySet {
@@ -49,6 +50,16 @@ impl MemorySet {
         self.page_table.token()
     }
     /// Assume that no conflicts.
+    pub fn insert_framed_area_kernel(
+        &mut self,
+        start_va: VirtAddr,
+        end_va: VirtAddr,
+        permission: MapPermission,
+    ) {
+        self.kpush(
+            MapArea::new(start_va, end_va, MapType::Framed, permission),
+        );
+    }
     pub fn insert_framed_area(
         &mut self,
         start_va: VirtAddr,
@@ -71,9 +82,13 @@ impl MemorySet {
             self.areas.remove(idx);
         }
     }
-    fn push(&mut self, mut map_area: MapArea, data: Option<&[u8]>) {
+    fn kpush(&mut self, mut map_area: MapArea) {
         map_area.map(&mut self.page_table);
+        self.areas.push(map_area);
+    }
+    fn push(&mut self, mut map_area: MapArea, data: Option<&[u8]>) {
         if let Some(data) = data {
+            map_area.map(&mut self.page_table);
             map_area.copy_data(&mut self.page_table, data);
         }
         self.areas.push(map_area);
@@ -100,65 +115,59 @@ impl MemorySet {
             sbss_with_stack as usize, ebss as usize
         );
         println!("mapping .text section");
-        memory_set.push(
+        memory_set.kpush(
             MapArea::new(
                 (stext as usize).into(),
                 (etext as usize).into(),
                 MapType::Identical,
                 MapPermission::R | MapPermission::X,
             ),
-            None,
         );
         println!("mapping .rodata section");
-        memory_set.push(
+        memory_set.kpush(
             MapArea::new(
                 (srodata as usize).into(),
                 (erodata as usize).into(),
                 MapType::Identical,
                 MapPermission::R,
             ),
-            None,
         );
         println!("mapping .data section");
-        memory_set.push(
+        memory_set.kpush(
             MapArea::new(
                 (sdata as usize).into(),
                 (edata as usize).into(),
                 MapType::Identical,
                 MapPermission::R | MapPermission::W,
             ),
-            None,
         );
         println!("mapping .bss section");
-        memory_set.push(
+        memory_set.kpush(
             MapArea::new(
                 (sbss_with_stack as usize).into(),
                 (ebss as usize).into(),
                 MapType::Identical,
                 MapPermission::R | MapPermission::W,
             ),
-            None,
         );
         println!("mapping physical memory");
-        memory_set.push(
+        memory_set.kpush(
             MapArea::new(
                 (ekernel as usize).into(),
                 MEMORY_END.into(),
                 MapType::Identical,
                 MapPermission::R | MapPermission::W,
             ),
-            None,
         );
         println!("mapping memory-mapped registers");
         for pair in MMIO {
-            memory_set.push(
+            memory_set.kpush(
                 MapArea::new(
                     (*pair).0.into(),
                     ((*pair).0 + (*pair).1).into(),
                     MapType::Identical,
                     MapPermission::R | MapPermission::W,
                 ),
-                None,
             );
         }
         memory_set
@@ -216,7 +225,7 @@ impl MemorySet {
         // copy data sections/trap_context/user_stack
         for area in user_space.areas.iter() {
             let new_area = MapArea::from_another(area);
-            memory_set.push(new_area, None);
+            memory_set.kpush(new_area);
             // copy data from another space
             for vpn in area.vpn_range {
                 let src_ppn = user_space.translate(vpn).unwrap().ppn();
@@ -245,10 +254,10 @@ impl MemorySet {
 }
 
 pub struct MapArea {
-    vpn_range: VPNRange,
-    data_frames: BTreeMap<VirtPageNum, FrameTracker>,
-    map_type: MapType,
-    map_perm: MapPermission,
+    pub vpn_range: VPNRange,
+    pub data_frames: BTreeMap<VirtPageNum, FrameTracker>,
+    pub map_type: MapType,
+    pub map_perm: MapPermission,
 }
 
 impl MapArea {
@@ -289,6 +298,7 @@ impl MapArea {
         }
         let pte_flags = PTEFlags::from_bits(self.map_perm.bits).unwrap();
         page_table.map(vpn, ppn, pte_flags);
+        P2V_MAP.exclusive_access().insert(ppn, vpn);
     }
     pub fn unmap_one(&mut self, page_table: &mut PageTable, vpn: VirtPageNum) {
         if self.map_type == MapType::Framed {
@@ -327,6 +337,9 @@ impl MapArea {
             }
             current_vpn.step();
         }
+    }
+    pub fn get_flag_bits(&mut self) -> PTEFlags {
+        PTEFlags::from_bits(self.map_perm.bits).unwrap()
     }
 }
 
