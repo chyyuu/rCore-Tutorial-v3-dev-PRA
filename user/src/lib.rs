@@ -116,6 +116,14 @@ pub fn wait(exit_code: &mut i32) -> isize {
     }
 }
 
+pub fn mmap(start: usize, len: usize, prot: usize) -> isize {
+    sys_mmap(start, len, prot)
+}
+
+pub fn munmap(start: usize, len: usize) -> isize {
+    sys_munmap(start, len)
+}
+
 pub fn waitpid(pid: usize, exit_code: &mut i32) -> isize {
     loop {
         match sys_waitpid(pid as isize, exit_code as *mut _) {
