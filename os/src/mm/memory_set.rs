@@ -35,9 +35,35 @@ pub fn kernel_token() -> usize {
     KERNEL_SPACE.exclusive_access().token()
 }
 
+#[derive(Debug)]
+pub struct Queue<T> {
+    data: Vec<T>,
+}
+
+impl <T> Queue<T> {
+    pub fn new() -> Self {
+        Queue{ data: Vec::new() }
+    }
+
+    pub fn push(&mut self, item: T) {
+        self.data.push(item);
+    }
+
+    pub fn pop(&mut self) ->Option<T> {
+        let l = self.data.len();
+        if l > 0 {
+            let v = self.data.remove(0);
+            Some(v)
+        } else {
+            None
+        }
+    }
+}
+
 pub struct MemorySet {
     pub page_table: PageTable,
     pub areas: Vec<MapArea>,
+    pub frame_que: Queue<PhysPageNum>,
 }
 
 impl MemorySet {
@@ -45,6 +71,7 @@ impl MemorySet {
         Self {
             page_table: PageTable::new(),
             areas: Vec::new(),
+            frame_que: Queue::new(),
         }
     }
     pub fn token(&self) -> usize {
@@ -84,12 +111,12 @@ impl MemorySet {
         }
     }
     fn kpush(&mut self, mut map_area: MapArea) {
-        map_area.map(&mut self.page_table);
+        map_area.map(&mut self.page_table, &mut self.frame_que);
         self.areas.push(map_area);
     }
     fn push(&mut self, mut map_area: MapArea, data: Option<&[u8]>) {
         if let Some(data) = data {
-            map_area.map(&mut self.page_table);
+            map_area.map(&mut self.page_table, &mut self.frame_que);
             map_area.copy_data(&mut self.page_table, data);
         }
         self.areas.push(map_area);
@@ -285,7 +312,7 @@ impl MapArea {
             map_perm: another.map_perm,
         }
     }
-    pub fn map_one(&mut self, page_table: &mut PageTable, vpn: VirtPageNum) {
+    pub fn map_one(&mut self, page_table: &mut PageTable, vpn: VirtPageNum, frame_que: &mut Queue<PhysPageNum>) {
         let ppn: PhysPageNum;
         match self.map_type {
             MapType::Identical => {
@@ -294,6 +321,7 @@ impl MapArea {
             MapType::Framed => {
                 let frame = frame_alloc().unwrap();
                 ppn = frame.ppn;
+                frame_que.push(ppn);
                 self.data_frames.insert(vpn, frame);
             }
         }
@@ -307,9 +335,9 @@ impl MapArea {
         }
         page_table.unmap(vpn);
     }
-    pub fn map(&mut self, page_table: &mut PageTable) {
+    pub fn map(&mut self, page_table: &mut PageTable, frame_que: &mut Queue<PhysPageNum>) {
         for vpn in self.vpn_range {
-            self.map_one(page_table, vpn);
+            self.map_one(page_table, vpn, frame_que);
         }
     }
     pub fn unmap(&mut self, page_table: &mut PageTable) {
@@ -393,7 +421,8 @@ pub fn memory_alloc(start: usize, len: usize, port: usize) -> isize {
         memory_set.insert_framed_area(start.into(), endr.into(), permission);
         start = endr;
     }
-    return ((len - 1 + PAGE_SIZE) / PAGE_SIZE * PAGE_SIZE) as isize;
+    // return ((len - 1 + PAGE_SIZE) / PAGE_SIZE * PAGE_SIZE) as isize;
+    return 0;
 }
 
 pub fn memory_free(start: usize, len: usize) -> isize {
@@ -428,7 +457,8 @@ pub fn memory_free(start: usize, len: usize) -> isize {
             memory_set.areas.remove(i);
         }
     }
-    return ((len - 1 + PAGE_SIZE) / PAGE_SIZE * PAGE_SIZE) as isize;
+    // return ((len - 1 + PAGE_SIZE) / PAGE_SIZE * PAGE_SIZE) as isize;
+    return 0;
 }
 
 #[allow(unused)]

@@ -1,5 +1,5 @@
 
-use super::{VirtPageNum, PhysPageNum, MapType, frame_alloc};
+use super::{VirtAddr, VirtPageNum, PhysPageNum, MapType, frame_alloc};
 use crate::task::current_process;
 use crate::drivers::{MAX_PAGES, ide_read, ide_write};
 use crate::sync::UPSafeCell;
@@ -7,31 +7,6 @@ use alloc::collections::BTreeMap;
 use alloc::sync::Arc;
 use alloc::vec::Vec;
 use lazy_static::*;
-
-#[derive(Debug)]
-pub struct Queue<T> {
-    data: Vec<T>,
-}
-
-impl <T> Queue<T> {
-    pub fn new() -> Self {
-        Queue{ data: Vec::new() }
-    }
-
-    pub fn push(&mut self, item: T) {
-        self.data.push(item);
-    }
-
-    pub fn pop(&mut self) ->Option<T> {
-        let l = self.data.len();
-        if l > 0 {
-            let v = self.data.remove(0);
-            Some(v)
-        } else {
-            None
-        }
-    }
-}
 
 pub struct IdeManager {
     current: usize,
@@ -73,23 +48,41 @@ impl IdeManager {
 }
 
 lazy_static! {
-    pub static ref FRAME_QUE: Arc<UPSafeCell<Queue<PhysPageNum>>> =
-        Arc::new(unsafe { UPSafeCell::new( Queue::new()) });
     pub static ref P2V_MAP: Arc<UPSafeCell<BTreeMap<PhysPageNum, VirtPageNum>>> =
         Arc::new(unsafe { UPSafeCell::new( BTreeMap::new()) });
     pub static ref IDE_MANAGER: Arc<UPSafeCell<IdeManager>> =
         Arc::new(unsafe { UPSafeCell::new( IdeManager::new()) });
 }
 
-pub fn do_pgfault(addr: usize) -> bool {
+pub fn do_pgfault(addr: usize, flag: usize) -> bool {
     let process = current_process();
     let mut pcb = process.inner_exclusive_access();
     let memory_set = &mut pcb.memory_set;
-    let vpn: VirtPageNum = addr.into();
-    // println!("{}", addr);
+    let va: VirtAddr = addr.into();
+    let vpn: VirtPageNum = va.into();
+    println!("[kernel] page fault: addr:{} vpn:{}", addr, vpn.0);
+    if let Some(pte) = memory_set.page_table.translate(vpn) {
+        if pte.is_valid() {
+            if !pte.readable() && flag==0 {
+                println!("[kernel] Frame not readable.");
+                return false;
+            }
+            if !pte.writable() && flag==1 {
+                println!("[kernel] Frame not writable.");
+                return false;
+            }
+            if !pte.executable() && flag==2 {
+                println!("[kernel] Frame not executable.");
+                return false;
+            }
+        }
+    }
     for area in &mut memory_set.areas {
         // println!("{} {}", area.vpn_range.get_start().0, area.vpn_range.get_end().0);
-        if vpn >= area.vpn_range.get_start() && vpn <= area.vpn_range.get_end() {
+        if vpn >= area.vpn_range.get_start() && vpn < area.vpn_range.get_end() {
+            // println!("suc: {} {}", area.vpn_range.get_start().0, area.vpn_range.get_end().0);
+            // let flags = area.get_flag_bits();
+            // println!("{}", flags.bits() as usize);
             let ppn: PhysPageNum;
             match area.map_type {
                 MapType::Identical => {
@@ -103,7 +96,7 @@ pub fn do_pgfault(addr: usize) -> bool {
                         area.data_frames.insert(vpn, frame);
                     }
                     else {  // need to swap out a frame
-                        ppn = FRAME_QUE.exclusive_access().pop().unwrap();
+                        ppn = memory_set.frame_que.pop().unwrap();
                         let data_old = ppn.get_bytes_array();
                         let p2v_map = P2V_MAP.exclusive_access();
                         let vpn_old = p2v_map.get(&ppn).unwrap();
@@ -120,6 +113,7 @@ pub fn do_pgfault(addr: usize) -> bool {
                     }
                 }
             }
+            println!("[kernel] mapping vpn:{} to ppn:{}", vpn.0, ppn.0);
             memory_set.page_table.map(vpn, ppn, area.get_flag_bits());
             return true;
         }

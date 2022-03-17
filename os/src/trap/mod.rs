@@ -57,7 +57,6 @@ pub fn trap_handler() -> ! {
         }
         Trap::Exception(Exception::StoreFault)
         | Trap::Exception(Exception::InstructionFault)
-        | Trap::Exception(Exception::InstructionPageFault)
         | Trap::Exception(Exception::LoadFault) => {
             /*
             println!(
@@ -69,9 +68,8 @@ pub fn trap_handler() -> ! {
             */
             current_add_signal(SignalFlags::SIGSEGV);
         }
-        Trap::Exception(Exception::StorePageFault)
-        | Trap::Exception(Exception::LoadPageFault) => {
-            println!("!!!!!!!!!!!!!!!!!!!!!!PageFault!!!!!!!!!!!!!!!!!!!!!!!");
+        Trap::Exception(Exception::LoadPageFault) => {
+            println!("[kernel] !!!!!!!!!!!!!!!!!!!!!!LoadPageFault!!!!!!!!!!!!!!!!!!!!!!!");
             // println!(
             //     "[kernel] {:?} in application, bad addr = {:#x}, bad instruction = {:#x}, kernel killed it.",
             //     scause.cause(),
@@ -79,7 +77,33 @@ pub fn trap_handler() -> ! {
             //     current_trap_cx().sepc,
             // );
             // current_add_signal(SignalFlags::SIGSEGV);
-            if !do_pgfault(stval) {
+            if !do_pgfault(stval, 0) {
+                current_add_signal(SignalFlags::SIGSEGV);
+            }
+        }
+        Trap::Exception(Exception::StorePageFault) => {
+            println!("[kernel] !!!!!!!!!!!!!!!!!!!!!!StorePageFault!!!!!!!!!!!!!!!!!!!!!!!");
+            // println!(
+            //     "[kernel] {:?} in application, bad addr = {:#x}, bad instruction = {:#x}, kernel killed it.",
+            //     scause.cause(),
+            //     stval,
+            //     current_trap_cx().sepc,
+            // );
+            // current_add_signal(SignalFlags::SIGSEGV);
+            if !do_pgfault(stval, 1) {
+                current_add_signal(SignalFlags::SIGSEGV);
+            }
+        }
+        Trap::Exception(Exception::InstructionPageFault) => {
+            println!("[kernel] !!!!!!!!!!!!!!!!!!!!!!InstructionPageFault!!!!!!!!!!!!!!!!!!!!!!!");
+            // println!(
+            //     "[kernel] {:?} in application, bad addr = {:#x}, bad instruction = {:#x}, kernel killed it.",
+            //     scause.cause(),
+            //     stval,
+            //     current_trap_cx().sepc,
+            // );
+            // current_add_signal(SignalFlags::SIGSEGV);
+            if !do_pgfault(stval, 2) {
                 current_add_signal(SignalFlags::SIGSEGV);
             }
         }

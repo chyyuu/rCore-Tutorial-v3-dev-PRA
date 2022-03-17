@@ -15,7 +15,7 @@ pub use page_table::{
     translated_byte_buffer, translated_ref, translated_refmut, translated_str, PageTable,
     PageTableEntry, UserBuffer, UserBufferIterator,
 };
-pub use vmm::{FRAME_QUE, P2V_MAP, do_pgfault};
+pub use vmm::{P2V_MAP, do_pgfault};
 
 pub fn init() {
     heap_allocator::init_heap();
