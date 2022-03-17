@@ -4,6 +4,7 @@ use super::{PhysAddr, PhysPageNum, VirtAddr, VirtPageNum};
 use super::{StepByOne, VPNRange};
 use super::{P2V_MAP};
 use crate::config::{MEMORY_END, MMIO, PAGE_SIZE, TRAMPOLINE};
+use crate::task::current_process;
 use crate::sync::UPSafeCell;
 use alloc::collections::BTreeMap;
 use alloc::sync::Arc;
@@ -356,6 +357,78 @@ bitflags! {
         const X = 1 << 3;
         const U = 1 << 4;
     }
+}
+
+pub fn memory_alloc(start: usize, len: usize, port: usize) -> isize {
+    if len == 0 {
+        return 0;
+    }
+    if (len > 1073741824) || ((port & (!0x7)) != 0) || ((port & 0x7) == 0) || ((start % 4096) != 0) {
+        return -1;
+    }
+    let process = current_process();
+    let mut pcb = process.inner_exclusive_access();
+    let memory_set = &mut pcb.memory_set;
+    let l: VirtAddr = start.into();
+    let r: VirtAddr = (start + len).into();
+    let lvpn = l.floor();
+    let rvpn = r.ceil();
+    // println!("L:{:?} R:{:?}", L, R);
+    for area in &memory_set.areas {
+        // println!("{:?} {:?}", area.vpn_range.l, area.vpn_range.r);
+        if (lvpn <= area.vpn_range.get_start()) && (rvpn > area.vpn_range.get_start()) {
+            return -1;
+        }
+    }
+    let mut permission = MapPermission::from_bits((port as u8) << 1).unwrap();
+    permission.set(MapPermission::U, true);
+    // inner.tasks[current].memory_set.insert_framed_area(start.into(), (start + len).into(), permission);
+    let mut start = start;
+    let end = start + len;
+    while start < end {
+        let mut endr = start + PAGE_SIZE;
+        if endr > end {
+            endr = end;
+        }
+        memory_set.insert_framed_area(start.into(), endr.into(), permission);
+        start = endr;
+    }
+    return ((len - 1 + PAGE_SIZE) / PAGE_SIZE * PAGE_SIZE) as isize;
+}
+
+pub fn memory_free(start: usize, len: usize) -> isize {
+    if len == 0 {
+        return 0;
+    }
+    if start % 4096 != 0 {
+        return -1;
+    }
+    let process = current_process();
+    let mut pcb = process.inner_exclusive_access();
+    let memory_set = &mut pcb.memory_set;
+    let l: VirtAddr = start.into();
+    let r: VirtAddr = (start + len).into();
+    let lvpn = l.floor();
+    let rvpn = r.ceil();
+    let mut cnt = 0;
+    for area in &memory_set.areas {
+        if (lvpn <= area.vpn_range.get_start()) && (rvpn > area.vpn_range.get_start()) {
+            cnt += 1;
+        }
+    }
+    if cnt < rvpn.0-lvpn.0 {
+        return -1;
+    }
+    for i in 0..memory_set.areas.len() {
+        if !memory_set.areas.get(i).is_some() {
+            continue;
+        }
+        if (lvpn <= memory_set.areas[i].vpn_range.get_start()) && (rvpn > memory_set.areas[i].vpn_range.get_start()) {
+            memory_set.areas[i].unmap(&mut memory_set.page_table);
+            memory_set.areas.remove(i);
+        }
+    }
+    return ((len - 1 + PAGE_SIZE) / PAGE_SIZE * PAGE_SIZE) as isize;
 }
 
 #[allow(unused)]

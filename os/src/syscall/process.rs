@@ -1,5 +1,5 @@
 use crate::fs::{open_file, OpenFlags};
-use crate::mm::{translated_ref, translated_refmut, translated_str};
+use crate::mm::{translated_ref, translated_refmut, translated_str, memory_alloc, memory_free};
 use crate::task::{
     current_process, current_task, current_user_token, exit_current_and_run_next, pid2process,
     suspend_current_and_run_next, SignalFlags,
@@ -114,4 +114,12 @@ pub fn sys_kill(pid: usize, signal: u32) -> isize {
     } else {
         -1
     }
+}
+
+pub fn sys_mmap(start: usize, len: usize, port: usize) -> isize {
+    memory_alloc(start, len, port)
+}
+
+pub fn sys_munmap(start: usize, len: usize) -> isize {
+    memory_free(start, len)
 }

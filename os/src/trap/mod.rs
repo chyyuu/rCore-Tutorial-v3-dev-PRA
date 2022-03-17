@@ -79,10 +79,7 @@ pub fn trap_handler() -> ! {
             //     current_trap_cx().sepc,
             // );
             // current_add_signal(SignalFlags::SIGSEGV);
-            if do_pgfault(stval) {
-                
-            }
-            else {
+            if !do_pgfault(stval) {
                 current_add_signal(SignalFlags::SIGSEGV);
             }
         }
