@@ -13,7 +13,7 @@ use user_lib::mmap;
 #[no_mangle]
 fn main() -> i32 {
     let start: usize = 0x10000000;
-    let len: usize = 4096;
+    let len: usize = 4096 * 800;
     let prot: usize = 3;
     assert_eq!(0, mmap(start, len, prot));
     for i in start..(start + len) {

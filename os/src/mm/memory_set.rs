@@ -111,12 +111,12 @@ impl MemorySet {
         }
     }
     fn kpush(&mut self, mut map_area: MapArea) {
-        map_area.map(&mut self.page_table, &mut self.frame_que);
+        map_area.map(&mut self.page_table);
         self.areas.push(map_area);
     }
     fn push(&mut self, mut map_area: MapArea, data: Option<&[u8]>) {
         if let Some(data) = data {
-            map_area.map(&mut self.page_table, &mut self.frame_que);
+            map_area.map(&mut self.page_table);
             map_area.copy_data(&mut self.page_table, data);
         }
         self.areas.push(map_area);
@@ -312,7 +312,7 @@ impl MapArea {
             map_perm: another.map_perm,
         }
     }
-    pub fn map_one(&mut self, page_table: &mut PageTable, vpn: VirtPageNum, frame_que: &mut Queue<PhysPageNum>) {
+    pub fn map_one(&mut self, page_table: &mut PageTable, vpn: VirtPageNum) {
         let ppn: PhysPageNum;
         match self.map_type {
             MapType::Identical => {
@@ -321,7 +321,6 @@ impl MapArea {
             MapType::Framed => {
                 let frame = frame_alloc().unwrap();
                 ppn = frame.ppn;
-                frame_que.push(ppn);
                 self.data_frames.insert(vpn, frame);
             }
         }
@@ -331,13 +330,14 @@ impl MapArea {
     }
     pub fn unmap_one(&mut self, page_table: &mut PageTable, vpn: VirtPageNum) {
         if self.map_type == MapType::Framed {
+            // println!("unmapping vpn:{}", vpn.0);
             self.data_frames.remove(&vpn);
         }
         page_table.unmap(vpn);
     }
-    pub fn map(&mut self, page_table: &mut PageTable, frame_que: &mut Queue<PhysPageNum>) {
+    pub fn map(&mut self, page_table: &mut PageTable) {
         for vpn in self.vpn_range {
-            self.map_one(page_table, vpn, frame_que);
+            self.map_one(page_table, vpn);
         }
     }
     pub fn unmap(&mut self, page_table: &mut PageTable) {

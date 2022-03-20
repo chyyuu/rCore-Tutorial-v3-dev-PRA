@@ -28,6 +28,7 @@ impl Debug for FrameTracker {
 
 impl Drop for FrameTracker {
     fn drop(&mut self) {
+        // println!("dropping ppn:{}", self.ppn.0);
         frame_dealloc(self.ppn);
     }
 }
@@ -49,6 +50,12 @@ impl StackFrameAllocator {
         self.current = l.0;
         self.end = r.0;
         println!("last {} Physical Frames.", self.end - self.current);
+    }
+    fn check(&mut self) -> bool {
+        if self.current < self.end {
+            return true;
+        }
+        self.recycled.len() != 0
     }
 }
 impl FrameAllocator for StackFrameAllocator {
@@ -106,6 +113,10 @@ pub fn frame_alloc() -> Option<FrameTracker> {
 
 pub fn frame_dealloc(ppn: PhysPageNum) {
     FRAME_ALLOCATOR.exclusive_access().dealloc(ppn);
+}
+
+pub fn frame_check() -> bool {
+    FRAME_ALLOCATOR.exclusive_access().check()
 }
 
 #[allow(unused)]

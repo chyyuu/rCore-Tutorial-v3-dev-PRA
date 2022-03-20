@@ -57,6 +57,8 @@ pub struct PageTable {
     frames: Vec<FrameTracker>,
 }
 
+// static mut PT_FRAME_CNT: usize = 0;
+
 /// Assume that it won't oom when creating/mapping.
 impl PageTable {
     pub fn new() -> Self {
@@ -87,6 +89,10 @@ impl PageTable {
                 let frame = frame_alloc().unwrap();
                 *pte = PageTableEntry::new(frame.ppn, PTEFlags::V);
                 self.frames.push(frame);
+                // unsafe {
+                //     PT_FRAME_CNT += 1;
+                //     println!("page table frame cnt:{}", PT_FRAME_CNT);
+                // }
             }
             ppn = pte.ppn();
         }

@@ -1,5 +1,5 @@
 
-use super::{VirtAddr, VirtPageNum, PhysPageNum, MapType, frame_alloc};
+use super::{VirtAddr, VirtPageNum, PhysPageNum, MapType, frame_alloc, frame_check};
 use crate::task::current_process;
 use crate::drivers::{MAX_PAGES, ide_read, ide_write};
 use crate::sync::UPSafeCell;
@@ -61,63 +61,80 @@ pub fn do_pgfault(addr: usize, flag: usize) -> bool {
     let memory_set = &mut pcb.memory_set;
     let va: VirtAddr = addr.into();
     let vpn: VirtPageNum = va.into();
-    println!("[kernel] page fault: addr:{} vpn:{}", addr, vpn.0);
+    println!("[kernel] PAGE FAULT: addr:{} vpn:{}", addr, vpn.0);
     if let Some(pte) = memory_set.page_table.translate(vpn) {
         if pte.is_valid() {
             if !pte.readable() && flag==0 {
-                println!("[kernel] Frame not readable.");
+                println!("[kernel] PAGE FAULT: Frame not readable.");
                 return false;
             }
             if !pte.writable() && flag==1 {
-                println!("[kernel] Frame not writable.");
+                println!("[kernel] PAGE FAULT: Frame not writable.");
                 return false;
             }
             if !pte.executable() && flag==2 {
-                println!("[kernel] Frame not executable.");
+                println!("[kernel] PAGE FAULT: Frame not executable.");
                 return false;
             }
         }
     }
-    for area in &mut memory_set.areas {
-        // println!("{} {}", area.vpn_range.get_start().0, area.vpn_range.get_end().0);
-        if vpn >= area.vpn_range.get_start() && vpn < area.vpn_range.get_end() {
-            // println!("suc: {} {}", area.vpn_range.get_start().0, area.vpn_range.get_end().0);
-            // let flags = area.get_flag_bits();
-            // println!("{}", flags.bits() as usize);
+    let mut ide_manager = IDE_MANAGER.exclusive_access();
+    for i in 0..memory_set.areas.len() {
+        if vpn >= memory_set.areas[i].vpn_range.get_start() && vpn < memory_set.areas[i].vpn_range.get_end() {
             let ppn: PhysPageNum;
-            match area.map_type {
+            match memory_set.areas[i].map_type {
                 MapType::Identical => {
                     panic!("[kernel] Page fault MapType should not be Identical.");
                 }
                 MapType::Framed => {
-                    let mut ide_manager = IDE_MANAGER.exclusive_access();
-
                     if let Some(frame) = frame_alloc() { // enough frame
                         ppn = frame.ppn;
-                        area.data_frames.insert(vpn, frame);
+                        memory_set.areas[i].data_frames.insert(vpn, frame);
+                        println!("[kernel] PAGE FAULT: Frame enough, allocating ppn:{} frame.", ppn.0);
                     }
-                    else {  // need to swap out a frame
+                    else {  // frame not enough, need to swap out a frame
                         ppn = memory_set.frame_que.pop().unwrap();
                         let data_old = ppn.get_bytes_array();
                         let mut p2v_map = P2V_MAP.exclusive_access();
-                        let vpn_old = p2v_map.get(&ppn).unwrap();
-                        ide_manager.swap_in(token, *vpn_old, data_old);
-                        area.unmap_one(&mut memory_set.page_table, *vpn_old);
+                        let vpn_old = *(p2v_map.get(&ppn).unwrap());
+                        ide_manager.swap_in(token, vpn_old, data_old);
+                        for j in 0..memory_set.areas.len() {
+                            if vpn_old >= memory_set.areas[j].vpn_range.get_start() && vpn_old < memory_set.areas[j].vpn_range.get_end() {
+                                memory_set.areas[j].unmap_one(&mut memory_set.page_table, vpn_old);
+                            }
+                        }
                         p2v_map.remove(&ppn);
-
+                        println!("[kernel] PAGE FAULT: Frame not enough, swapping out ppn:{} frame.", ppn.0);
+        
                         let frame = frame_alloc().unwrap();
-                        area.data_frames.insert(vpn, frame);
+                        memory_set.areas[i].data_frames.insert(vpn, frame);
                     }
-
+        
                     if ide_manager.check(token, vpn) {
                         let data = ppn.get_bytes_array();
                         ide_manager.swap_out(token, vpn, data);
+                        println!("[kernel] PAGE FAULT: Swapping in vpn:{} ppn:{} frame.", vpn.0, ppn.0);
                     }
                 }
             }
-            println!("[kernel] mapping vpn:{} to ppn:{}", vpn.0, ppn.0);
-            memory_set.page_table.map(vpn, ppn, area.get_flag_bits());
+            if !frame_check() {
+                let ppn = memory_set.frame_que.pop().unwrap();
+                let data_old = ppn.get_bytes_array();
+                let mut p2v_map = P2V_MAP.exclusive_access();
+                let vpn_old = *(p2v_map.get(&ppn).unwrap());
+                ide_manager.swap_in(token, vpn_old, data_old);
+                for j in 0..memory_set.areas.len() {
+                    if vpn_old >= memory_set.areas[j].vpn_range.get_start() && vpn_old < memory_set.areas[j].vpn_range.get_end() {
+                        memory_set.areas[j].unmap_one(&mut memory_set.page_table, vpn_old);
+                    }
+                }
+                p2v_map.remove(&ppn);
+                println!("[kernel] PAGE FAULT: Swapping out ppn:{} frame.", ppn.0);
+            }
+            println!("[kernel] PAGE FAULT: Mapping vpn:{} to ppn:{}.", vpn.0, ppn.0);
+            memory_set.page_table.map(vpn, ppn, memory_set.areas[i].get_flag_bits());
             P2V_MAP.exclusive_access().insert(ppn, vpn);
+            memory_set.frame_que.push(ppn);
             return true;
         }
     }
