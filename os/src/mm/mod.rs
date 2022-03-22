@@ -4,6 +4,7 @@ mod heap_allocator;
 mod memory_set;
 mod page_table;
 mod vmm;
+mod frame_manager;
 
 use address::VPNRange;
 pub use address::{PhysAddr, PhysPageNum, StepByOne, VirtAddr, VirtPageNum};
@@ -16,6 +17,7 @@ pub use page_table::{
     PageTableEntry, UserBuffer, UserBufferIterator,
 };
 pub use vmm::{P2V_MAP, do_pgfault};
+pub use frame_manager::{PRA, LocalFrameManager};
 
 pub fn init() {
     heap_allocator::init_heap();

@@ -93,7 +93,7 @@ pub fn do_pgfault(addr: usize, flag: usize) -> bool {
                         println!("[kernel] PAGE FAULT: Frame enough, allocating ppn:{} frame.", ppn.0);
                     }
                     else {  // frame not enough, need to swap out a frame
-                        ppn = memory_set.frame_que.pop().unwrap();
+                        ppn = memory_set.get_next_frame().unwrap();
                         let data_old = ppn.get_bytes_array();
                         let mut p2v_map = P2V_MAP.exclusive_access();
                         let vpn_old = *(p2v_map.get(&ppn).unwrap());
@@ -118,7 +118,7 @@ pub fn do_pgfault(addr: usize, flag: usize) -> bool {
                 }
             }
             if !frame_check() {
-                let ppn = memory_set.frame_que.pop().unwrap();
+                let ppn = memory_set.get_next_frame().unwrap();
                 let data_old = ppn.get_bytes_array();
                 let mut p2v_map = P2V_MAP.exclusive_access();
                 let vpn_old = *(p2v_map.get(&ppn).unwrap());
@@ -134,7 +134,7 @@ pub fn do_pgfault(addr: usize, flag: usize) -> bool {
             println!("[kernel] PAGE FAULT: Mapping vpn:{} to ppn:{}.", vpn.0, ppn.0);
             memory_set.page_table.map(vpn, ppn, memory_set.areas[i].get_flag_bits());
             P2V_MAP.exclusive_access().insert(ppn, vpn);
-            memory_set.frame_que.push(ppn);
+            memory_set.insert_frame(ppn);
             return true;
         }
     }

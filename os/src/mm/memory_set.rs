@@ -2,7 +2,7 @@ use super::{frame_alloc, FrameTracker};
 use super::{PTEFlags, PageTable, PageTableEntry};
 use super::{PhysAddr, PhysPageNum, VirtAddr, VirtPageNum};
 use super::{StepByOne, VPNRange};
-use super::{P2V_MAP};
+use super::{P2V_MAP, PRA, LocalFrameManager};
 use crate::config::{MEMORY_END, MMIO, PAGE_SIZE, TRAMPOLINE};
 use crate::task::current_process;
 use crate::sync::UPSafeCell;
@@ -35,35 +35,10 @@ pub fn kernel_token() -> usize {
     KERNEL_SPACE.exclusive_access().token()
 }
 
-#[derive(Debug)]
-pub struct Queue<T> {
-    data: Vec<T>,
-}
-
-impl <T> Queue<T> {
-    pub fn new() -> Self {
-        Queue{ data: Vec::new() }
-    }
-
-    pub fn push(&mut self, item: T) {
-        self.data.push(item);
-    }
-
-    pub fn pop(&mut self) ->Option<T> {
-        let l = self.data.len();
-        if l > 0 {
-            let v = self.data.remove(0);
-            Some(v)
-        } else {
-            None
-        }
-    }
-}
-
 pub struct MemorySet {
     pub page_table: PageTable,
     pub areas: Vec<MapArea>,
-    pub frame_que: Queue<PhysPageNum>,
+    pub frame_manager: LocalFrameManager,
 }
 
 impl MemorySet {
@@ -71,7 +46,7 @@ impl MemorySet {
         Self {
             page_table: PageTable::new(),
             areas: Vec::new(),
-            frame_que: Queue::new(),
+            frame_manager: LocalFrameManager::new(PRA::Clock),
         }
     }
     pub fn token(&self) -> usize {
@@ -278,6 +253,12 @@ impl MemorySet {
     pub fn recycle_data_pages(&mut self) {
         //*self = Self::new_bare();
         self.areas.clear();
+    }
+    pub fn get_next_frame(&mut self) -> Option<PhysPageNum> {
+        self.frame_manager.get_next_frame(&mut self.page_table)
+    }
+    pub fn insert_frame(&mut self, ppn: PhysPageNum) {
+        self.frame_manager.insert_frame(ppn)
     }
 }
 

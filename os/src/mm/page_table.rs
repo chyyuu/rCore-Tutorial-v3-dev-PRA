@@ -50,6 +50,18 @@ impl PageTableEntry {
     pub fn executable(&self) -> bool {
         (self.flags() & PTEFlags::X) != PTEFlags::empty()
     }
+    pub fn accessed(&self) -> bool {
+        (self.flags() & PTEFlags::A) != PTEFlags::empty()
+    }
+    pub fn dirty(&self) -> bool {
+        (self.flags() & PTEFlags::D) != PTEFlags::empty()
+    }
+    pub fn change_access(&mut self) {
+        self.bits ^= PTEFlags::A.bits as usize;
+    }
+    pub fn change_dirty(&mut self) {
+        self.bits ^= PTEFlags::D.bits as usize;
+    }
 }
 
 pub struct PageTable {
