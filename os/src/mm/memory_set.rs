@@ -46,7 +46,7 @@ impl MemorySet {
         Self {
             page_table: PageTable::new(),
             areas: Vec::new(),
-            frame_manager: LocalFrameManager::new(PRA::Clock),
+            frame_manager: LocalFrameManager::new(PRA::ClockImproved),
         }
     }
     pub fn token(&self) -> usize {

@@ -32,6 +32,7 @@ impl <T> Queue<T> {
 pub enum PRA {
     FIFO,
     Clock,
+    ClockImproved,
 }
 
 struct ClockQue {
@@ -81,6 +82,39 @@ impl ClockQue {
             self.inc();
         }
     }
+
+    pub fn pop_improved(&mut self, page_table: &mut PageTable) -> Option<PhysPageNum> {
+        loop {
+            let ppn = self.ppns[self.ptr];
+            let vpn = *(P2V_MAP.exclusive_access().get(&ppn).unwrap());
+            let pte = page_table.find_pte(vpn).unwrap();
+            if !pte.is_valid() {
+                panic!("[kernel] PAGE FAULT: Pte not valid in PRA Clock pop.");
+            }
+            if !pte.accessed() && !pte.dirty() {
+                self.ppns.remove(self.ptr);
+                if self.ptr == self.ppns.len() {
+                    self.ptr = 0;
+                }
+                return Some(ppn);
+            }
+            if pte.accessed() {
+                pte.change_access();
+                // println!("change pte access.");
+                if pte.accessed() {
+                    panic!("[kernel] PAGE FAULT: Pte access did not change.");
+                }
+            }
+            else {
+                pte.change_dirty();
+                // println!("change pte dirty.");
+                if pte.dirty() {
+                    panic!("[kernel] PAGE FAULT: Pte dirty did not change.");
+                }
+            }
+            self.inc();
+        }
+    }
 }
 
 pub struct LocalFrameManager {
@@ -105,6 +139,9 @@ impl LocalFrameManager {
             PRA::Clock => {
                 self.clock_que.pop(page_table)
             }
+            PRA::ClockImproved => {
+                self.clock_que.pop_improved(page_table)
+            }
         }
     }
     pub fn insert_frame(&mut self, ppn: PhysPageNum) {
@@ -113,6 +150,9 @@ impl LocalFrameManager {
                 self.fifo_que.push(ppn)
             }
             PRA::Clock => {
+                self.clock_que.push(ppn)
+            }
+            PRA::ClockImproved => {
                 self.clock_que.push(ppn)
             }
         }
