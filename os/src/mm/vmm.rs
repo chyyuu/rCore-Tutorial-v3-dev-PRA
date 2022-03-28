@@ -1,8 +1,9 @@
 
-use super::{VirtAddr, VirtPageNum, PhysPageNum, MapType, frame_alloc, frame_check};
+use super::{VirtAddr, VirtPageNum, PhysPageNum, MapType, frame_alloc, frame_check, MemorySet, GlobalFrameManager};
 use crate::task::current_process;
 use crate::drivers::{MAX_PAGES, ide_read, ide_write};
 use crate::sync::UPSafeCell;
+use crate::config::{PRA_IS_LOCAL, CHOSEN_PRA};
 use alloc::collections::BTreeMap;
 use alloc::sync::Arc;
 use alloc::vec::Vec;
@@ -52,32 +53,11 @@ lazy_static! {
         Arc::new(unsafe { UPSafeCell::new( BTreeMap::new()) });
     pub static ref IDE_MANAGER: Arc<UPSafeCell<IdeManager>> =
         Arc::new(unsafe { UPSafeCell::new( IdeManager::new()) });
+    pub static ref GFM: Arc<UPSafeCell<GlobalFrameManager>> =
+        Arc::new(unsafe { UPSafeCell::new( GlobalFrameManager::new(CHOSEN_PRA)) });
 }
 
-pub fn do_pgfault(addr: usize, flag: usize) -> bool {
-    let process = current_process();
-    let mut pcb = process.inner_exclusive_access();
-    let token = pcb.get_user_token();
-    let memory_set = &mut pcb.memory_set;
-    let va: VirtAddr = addr.into();
-    let vpn: VirtPageNum = va.into();
-    println!("[kernel] PAGE FAULT: addr:{} vpn:{}", addr, vpn.0);
-    if let Some(pte) = memory_set.page_table.translate(vpn) {
-        if pte.is_valid() {
-            if !pte.readable() && flag==0 {
-                println!("[kernel] PAGE FAULT: Frame not readable.");
-                return false;
-            }
-            if !pte.writable() && flag==1 {
-                println!("[kernel] PAGE FAULT: Frame not writable.");
-                return false;
-            }
-            if !pte.executable() && flag==2 {
-                println!("[kernel] PAGE FAULT: Frame not executable.");
-                return false;
-            }
-        }
-    }
+fn local_pra(memory_set: &mut MemorySet, vpn: VirtPageNum, token: usize) -> bool {
     let mut ide_manager = IDE_MANAGER.exclusive_access();
     for i in 0..memory_set.areas.len() {
         if vpn >= memory_set.areas[i].vpn_range.get_start() && vpn < memory_set.areas[i].vpn_range.get_end() {
@@ -139,4 +119,68 @@ pub fn do_pgfault(addr: usize, flag: usize) -> bool {
         }
     }
     false
+}
+
+fn global_pra(memory_set: &mut MemorySet, vpn: VirtPageNum, token: usize) -> bool {
+    for i in 0..memory_set.areas.len() {
+        if vpn >= memory_set.areas[i].vpn_range.get_start() && vpn < memory_set.areas[i].vpn_range.get_end() {
+            GFM.exclusive_access().pff_work(memory_set, token);
+            let ppn: PhysPageNum;
+            match memory_set.areas[i].map_type {
+                MapType::Identical => {
+                    panic!("[kernel] Page fault MapType should not be Identical.");
+                }
+                MapType::Framed => {
+                    let frame = frame_alloc().unwrap();
+                    ppn = frame.ppn;
+                    memory_set.areas[i].data_frames.insert(vpn, frame);
+
+                    if IDE_MANAGER.exclusive_access().check(token, vpn) {
+                        let data = ppn.get_bytes_array();
+                        IDE_MANAGER.exclusive_access().swap_out(token, vpn, data);
+                        println!("[kernel] PAGE FAULT: Swapping in vpn:{} ppn:{} frame.", vpn.0, ppn.0);
+                    }
+                }
+            }
+            println!("[kernel] PAGE FAULT: Mapping vpn:{} to ppn:{}.", vpn.0, ppn.0);
+            memory_set.page_table.map(vpn, ppn, memory_set.areas[i].get_flag_bits());
+            P2V_MAP.exclusive_access().insert(ppn, vpn);
+            memory_set.insert_frame(ppn);
+            return true;
+        }
+    }
+    false
+}
+
+pub fn do_pgfault(addr: usize, flag: usize) -> bool {
+    let process = current_process();
+    println!("[kernel] PAGE FAULT: pid {}", process.pid.0);
+    let mut pcb = process.inner_exclusive_access();
+    let token = pcb.get_user_token();
+    let memory_set = &mut pcb.memory_set;
+    let va: VirtAddr = addr.into();
+    let vpn: VirtPageNum = va.into();
+    println!("[kernel] PAGE FAULT: addr:{} vpn:{}", addr, vpn.0);
+    if let Some(pte) = memory_set.page_table.translate(vpn) {
+        if pte.is_valid() {
+            if !pte.readable() && flag==0 {
+                println!("[kernel] PAGE FAULT: Frame not readable.");
+                return false;
+            }
+            if !pte.writable() && flag==1 {
+                println!("[kernel] PAGE FAULT: Frame not writable.");
+                return false;
+            }
+            if !pte.executable() && flag==2 {
+                println!("[kernel] PAGE FAULT: Frame not executable.");
+                return false;
+            }
+        }
+    }
+    if PRA_IS_LOCAL {
+        local_pra(memory_set, vpn, token)
+    }
+    else {
+        global_pra(memory_set, vpn, token)
+    }
 }

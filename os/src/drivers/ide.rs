@@ -1,6 +1,6 @@
 use crate::config::PAGE_SIZE;
 
-pub const MAX_PAGES: usize = 512;
+pub const MAX_PAGES: usize = 2535;
 pub const IDE_SIZE: usize = MAX_PAGES * PAGE_SIZE;
 
 #[repr(align(4096))]

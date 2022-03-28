@@ -2,8 +2,8 @@ use super::{frame_alloc, FrameTracker};
 use super::{PTEFlags, PageTable, PageTableEntry};
 use super::{PhysAddr, PhysPageNum, VirtAddr, VirtPageNum};
 use super::{StepByOne, VPNRange};
-use super::{P2V_MAP, PRA, LocalFrameManager};
-use crate::config::{MEMORY_END, MMIO, PAGE_SIZE, TRAMPOLINE};
+use super::{P2V_MAP, LocalFrameManager};
+use crate::config::{MEMORY_END, MMIO, PAGE_SIZE, TRAMPOLINE, CHOSEN_PRA};
 use crate::task::current_process;
 use crate::sync::UPSafeCell;
 use alloc::collections::BTreeMap;
@@ -46,7 +46,7 @@ impl MemorySet {
         Self {
             page_table: PageTable::new(),
             areas: Vec::new(),
-            frame_manager: LocalFrameManager::new(PRA::ClockImproved),
+            frame_manager: LocalFrameManager::new(CHOSEN_PRA),
         }
     }
     pub fn token(&self) -> usize {
