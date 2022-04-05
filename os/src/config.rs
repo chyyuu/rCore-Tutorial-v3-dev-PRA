@@ -12,8 +12,9 @@ pub const TRAMPOLINE: usize = usize::MAX - PAGE_SIZE + 1;
 pub const TRAP_CONTEXT_BASE: usize = TRAMPOLINE - PAGE_SIZE;
 
 pub const PRA_IS_LOCAL: bool = false;
-pub const CHOSEN_PRA: PRA = PRA::PageFaultFrequency;
+pub const CHOSEN_PRA: PRA = PRA::WorkingSet;
 pub const PFF_T: usize = 100000;
+pub const WORKINGSET_DELTA_NUM: usize = 5;
 
 pub use crate::board::{CLOCK_FREQ, MMIO};
 

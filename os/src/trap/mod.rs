@@ -6,7 +6,7 @@ use crate::task::{
     check_signals_of_current, current_add_signal, current_trap_cx, current_trap_cx_user_va,
     current_user_token, exit_current_and_run_next, suspend_current_and_run_next, SignalFlags,
 };
-use crate::mm::{do_pgfault};
+use crate::mm::{do_pgfault, check_workingset};
 use crate::timer::{check_timer, set_next_trigger};
 use core::arch::{asm, global_asm};
 use riscv::register::{
@@ -111,6 +111,7 @@ pub fn trap_handler() -> ! {
             current_add_signal(SignalFlags::SIGILL);
         }
         Trap::Interrupt(Interrupt::SupervisorTimer) => {
+            check_workingset();
             set_next_trigger();
             check_timer();
             suspend_current_and_run_next();

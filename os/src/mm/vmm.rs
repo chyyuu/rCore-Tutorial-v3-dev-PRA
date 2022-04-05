@@ -124,7 +124,7 @@ fn local_pra(memory_set: &mut MemorySet, vpn: VirtPageNum, token: usize) -> bool
 fn global_pra(memory_set: &mut MemorySet, vpn: VirtPageNum, token: usize) -> bool {
     for i in 0..memory_set.areas.len() {
         if vpn >= memory_set.areas[i].vpn_range.get_start() && vpn < memory_set.areas[i].vpn_range.get_end() {
-            GFM.exclusive_access().pff_work(memory_set, token);
+            GFM.exclusive_access().work(memory_set, token);
             let ppn: PhysPageNum;
             match memory_set.areas[i].map_type {
                 MapType::Identical => {

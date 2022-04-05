@@ -1,9 +1,13 @@
 
-use super::{PageTable, PhysPageNum, MemorySet, P2V_MAP, IDE_MANAGER};
-use crate:: task::TASK_MANAGER;
-use crate::config::PFF_T;
+use super::{PageTable, PhysPageNum, MemorySet, VirtPageNum, P2V_MAP, IDE_MANAGER, GFM};
+use crate:: task::{TASK_MANAGER, current_process};
+use crate::config::{PFF_T, WORKINGSET_DELTA_NUM};
+use crate::sync::UPSafeCell;
 use crate::timer::get_time;
+use alloc::collections::BTreeMap;
+use alloc::sync::Arc;
 use alloc::vec::Vec;
+use lazy_static::*;
 
 #[derive(Debug)]
 pub struct Queue<T> {
@@ -126,7 +130,7 @@ pub struct LocalFrameManager {
     used_pra: PRA,
     fifo_que: Queue<PhysPageNum>,
     clock_que: ClockQue,
-    pff_ppns: Vec<PhysPageNum>,
+    global_ppns: Vec<PhysPageNum>,
 }
 
 impl LocalFrameManager {
@@ -135,7 +139,7 @@ impl LocalFrameManager {
             used_pra: pra,
             fifo_que: Queue::new(),
             clock_que: ClockQue::new(),
-            pff_ppns: Vec::new(),
+            global_ppns: Vec::new(),
         }
     }
     pub fn get_next_frame(&mut self, page_table: &mut PageTable) -> Option<PhysPageNum> {
@@ -157,23 +161,30 @@ impl LocalFrameManager {
             PRA::FIFO => {
                 self.fifo_que.push(ppn)
             }
-            PRA::Clock => {
+            PRA::Clock | PRA::ClockImproved => {
                 self.clock_que.push(ppn)
             }
-            PRA::ClockImproved => {
-                self.clock_que.push(ppn)
+            PRA::PageFaultFrequency | PRA::WorkingSet => {
+                self.global_ppns.push(ppn)
             }
-            PRA::PageFaultFrequency => {
-                self.pff_ppns.push(ppn)
-            }
-            _ => {}
         }
     }
+}
+
+lazy_static! {
+    pub static ref PTE_RECORDER: Arc<UPSafeCell<Vec<BTreeMap<(usize, VirtPageNum), bool>>>> = {
+        let mut tmp: Vec<BTreeMap<(usize, VirtPageNum), bool>> = Vec::new();
+        for _ in 0..WORKINGSET_DELTA_NUM {
+            tmp.push(BTreeMap::new());
+        }
+        Arc::new(unsafe { UPSafeCell::new(tmp) })
+    };
 }
 
 pub struct GlobalFrameManager {
     used_pra: PRA,
     t_last: usize,
+    idx: usize,
 }
 
 impl GlobalFrameManager {
@@ -181,6 +192,7 @@ impl GlobalFrameManager {
         GlobalFrameManager {
             used_pra: pra,
             t_last: 0,
+            idx: 0,
         }
     }
     pub fn pff_work(&mut self, memory_set_: &mut MemorySet, token_: usize) {
@@ -198,8 +210,8 @@ impl GlobalFrameManager {
                 let mut pcb = process.inner_exclusive_access();
                 let token = pcb.get_user_token();
                 let memory_set = &mut pcb.memory_set;
-                for j in (0..memory_set.frame_manager.pff_ppns.len()).rev() {
-                    let ppn = memory_set.frame_manager.pff_ppns[j];
+                for j in (0..memory_set.frame_manager.global_ppns.len()).rev() {
+                    let ppn = memory_set.frame_manager.global_ppns[j];
                     let data_old = ppn.get_bytes_array();
                     let mut p2v_map = P2V_MAP.exclusive_access();
                     let vpn = *(p2v_map.get(&ppn).unwrap());
@@ -212,14 +224,14 @@ impl GlobalFrameManager {
                                 }
                             }
                             p2v_map.remove(&ppn);
-                            memory_set.frame_manager.pff_ppns.remove(j);
-                            println!("[kernel] PAGE FAULT: Swapping out ppn:{} frame.", ppn.0);
+                            memory_set.frame_manager.global_ppns.remove(j);
+                            println!("[kernel] PAGE FAULT: (global) Swapping out ppn:{} frame.", ppn.0);
                         }
                     }
                 }
             }
-            for i in (0..memory_set_.frame_manager.pff_ppns.len()).rev() {
-                let ppn = memory_set_.frame_manager.pff_ppns[i];
+            for i in (0..memory_set_.frame_manager.global_ppns.len()).rev() {
+                let ppn = memory_set_.frame_manager.global_ppns[i];
                 let data = ppn.get_bytes_array();
                 let mut p2v_map = P2V_MAP.exclusive_access();
                 let vpn = *(p2v_map.get(&ppn).unwrap());
@@ -233,8 +245,8 @@ impl GlobalFrameManager {
                             }
                         }
                         p2v_map.remove(&ppn);
-                        memory_set_.frame_manager.pff_ppns.remove(i);
-                        println!("[kernel] PAGE FAULT: Swapping out ppn:{} frame.", ppn.0);
+                        memory_set_.frame_manager.global_ppns.remove(i);
+                        println!("[kernel] PAGE FAULT: (global) Swapping out ppn:{} frame.", ppn.0);
                     }
                 }
             }
@@ -244,25 +256,25 @@ impl GlobalFrameManager {
                 let process = task_manager.ready_queue[i].process.upgrade().unwrap();
                 let mut pcb = process.inner_exclusive_access();
                 let memory_set = &mut pcb.memory_set;
-                for j in 0..memory_set.frame_manager.pff_ppns.len() {
-                    let ppn = memory_set.frame_manager.pff_ppns[j];
+                for j in 0..memory_set.frame_manager.global_ppns.len() {
+                    let ppn = memory_set.frame_manager.global_ppns[j];
                     let p2v_map = P2V_MAP.exclusive_access();
                     let vpn = *(p2v_map.get(&ppn).unwrap());
                     if let Some(pte) = memory_set.page_table.find_pte(vpn) {
                         if pte.is_valid() && pte.accessed() {
-                            println!("global: changing pte access, ppn: {} pte.ppn: {}", ppn.0, pte.ppn().0);
+                            println!("[kernel] PAGE FAULT: (global) Changing pte access, ppn: {} pte.ppn: {}.", ppn.0, pte.ppn().0);
                             pte.change_access();
                         }
                     }
                 }
             }
-            for i in 0..memory_set_.frame_manager.pff_ppns.len() {
-                let ppn = memory_set_.frame_manager.pff_ppns[i];
+            for i in 0..memory_set_.frame_manager.global_ppns.len() {
+                let ppn = memory_set_.frame_manager.global_ppns[i];
                 let p2v_map = P2V_MAP.exclusive_access();
                 let vpn = *(p2v_map.get(&ppn).unwrap());
                 if let Some(pte) = memory_set_.page_table.find_pte(vpn) {
                     if pte.is_valid() && pte.accessed() {
-                        println!("global: changing pte access, ppn: {} pte.ppn: {}", ppn.0, pte.ppn().0);
+                        println!("[kernel] PAGE FAULT: (global) Changing pte access, ppn: {} pte.ppn: {}.", ppn.0, pte.ppn().0);
                         pte.change_access();
                     }
                 }
@@ -270,4 +282,140 @@ impl GlobalFrameManager {
         }
         self.t_last = t_current;
     }
+    fn check_workingset(&mut self) {
+        match self.used_pra {
+            PRA::WorkingSet => {
+                let mut pte_recorder = PTE_RECORDER.exclusive_access();
+                pte_recorder[self.idx].clear();
+                let task_manager = TASK_MANAGER.exclusive_access();
+                for i in 0..task_manager.ready_queue.len() {
+                    let process = task_manager.ready_queue[i].process.upgrade().unwrap();
+                    let mut pcb = process.inner_exclusive_access();
+                    let token = pcb.get_user_token();
+                    let memory_set = &mut pcb.memory_set;
+                    for j in (0..memory_set.frame_manager.global_ppns.len()).rev() {
+                        let ppn = memory_set.frame_manager.global_ppns[j];
+                        let p2v_map = P2V_MAP.exclusive_access();
+                        let vpn = *(p2v_map.get(&ppn).unwrap());
+                        if let Some(pte) = memory_set.page_table.find_pte(vpn) {
+                            if pte.is_valid() {
+                                pte_recorder[self.idx].insert((token, vpn), pte.accessed());
+                                if pte.accessed() {
+                                    println!("[kernel] PAGE FAULT: (global) Changing pte access, ppn: {} pte.ppn: {}.", ppn.0, pte.ppn().0);
+                                    pte.change_access();
+                                }
+                            }
+                        }
+                    }
+                }
+                let process = current_process();
+                let mut pcb = process.inner_exclusive_access();
+                let token = pcb.get_user_token();
+                let memory_set = &mut pcb.memory_set;
+                for i in (0..memory_set.frame_manager.global_ppns.len()).rev() {
+                    let ppn = memory_set.frame_manager.global_ppns[i];
+                    let p2v_map = P2V_MAP.exclusive_access();
+                    let vpn = *(p2v_map.get(&ppn).unwrap());
+                    if let Some(pte) = memory_set.page_table.find_pte(vpn) {
+                        if pte.is_valid() {
+                            pte_recorder[self.idx].insert((token, vpn), pte.accessed());
+                            if pte.accessed() {
+                                println!("[kernel] PAGE FAULT: (global) Changing pte access, ppn: {} pte.ppn: {}.", ppn.0, pte.ppn().0);
+                                pte.change_access();
+                            }
+                        }
+                    }
+                }
+                self.idx = (self.idx + 1) % WORKINGSET_DELTA_NUM;
+            }
+            _ => {}
+        }
+    }
+    pub fn workingset_work(&mut self, memory_set_: &mut MemorySet, token_: usize) {
+        let pte_recorder = PTE_RECORDER.exclusive_access();
+        let task_manager = TASK_MANAGER.exclusive_access();
+        for i in 0..task_manager.ready_queue.len() {
+            let process = task_manager.ready_queue[i].process.upgrade().unwrap();
+            let mut pcb = process.inner_exclusive_access();
+            let token = pcb.get_user_token();
+            let memory_set = &mut pcb.memory_set;
+            for j in (0..memory_set.frame_manager.global_ppns.len()).rev() {
+                let ppn = memory_set.frame_manager.global_ppns[j];
+                let mut p2v_map = P2V_MAP.exclusive_access();
+                let vpn = *(p2v_map.get(&ppn).unwrap());
+                let mut flag = false;
+                for k in 0..WORKINGSET_DELTA_NUM {
+                    if let Some(result) = pte_recorder[k].get(&(token, vpn)) {
+                        if *result == true {
+                            flag = true;
+                            break;
+                        }
+                    }
+                }
+                if let Some(pte) = memory_set.page_table.find_pte(vpn) {
+                    if pte.is_valid() && pte.accessed() {
+                        flag = true;
+                    }
+                }
+                if !flag {
+                    let data_old = ppn.get_bytes_array();
+                    IDE_MANAGER.exclusive_access().swap_in(token, vpn, data_old);
+                    for k in 0..memory_set.areas.len() {
+                        if vpn >= memory_set.areas[k].vpn_range.get_start() && vpn < memory_set.areas[k].vpn_range.get_end() {
+                            memory_set.areas[k].unmap_one(&mut memory_set.page_table, vpn);
+                        }
+                    }
+                    p2v_map.remove(&ppn);
+                    memory_set.frame_manager.global_ppns.remove(j);
+                    println!("[kernel] PAGE FAULT: Swapping out ppn:{} frame.", ppn.0);
+                }
+            }
+        }
+        for i in (0..memory_set_.frame_manager.global_ppns.len()).rev() {
+            let ppn = memory_set_.frame_manager.global_ppns[i];
+            let mut p2v_map = P2V_MAP.exclusive_access();
+            let vpn = *(p2v_map.get(&ppn).unwrap());
+            let mut flag = false;
+            for k in 0..WORKINGSET_DELTA_NUM {
+                if let Some(result) = pte_recorder[k].get(&(token_, vpn)) {
+                    if *result == true {
+                        flag = true;
+                        break;
+                    }
+                }
+            }
+            if let Some(pte) = memory_set_.page_table.find_pte(vpn) {
+                if pte.is_valid() && pte.accessed() {
+                    flag = true;
+                }
+            }
+            if !flag {
+                let data_old = ppn.get_bytes_array();
+                IDE_MANAGER.exclusive_access().swap_in(token_, vpn, data_old);
+                for k in 0..memory_set_.areas.len() {
+                    if vpn >= memory_set_.areas[k].vpn_range.get_start() && vpn < memory_set_.areas[k].vpn_range.get_end() {
+                        memory_set_.areas[k].unmap_one(&mut memory_set_.page_table, vpn);
+                    }
+                }
+                p2v_map.remove(&ppn);
+                memory_set_.frame_manager.global_ppns.remove(i);
+                println!("[kernel] PAGE FAULT: Swapping out ppn:{} frame.", ppn.0);
+            }
+        }
+    }
+    pub fn work(&mut self, memory_set: &mut MemorySet, token: usize) {
+        match self.used_pra {
+            PRA::PageFaultFrequency => {
+                self.pff_work(memory_set, token)
+            }
+            PRA::WorkingSet => {
+                self.workingset_work(memory_set, token)
+            }
+            _ => {}
+        }
+    }
+}
+
+pub fn check_workingset() {
+    GFM.exclusive_access().check_workingset()
 }
