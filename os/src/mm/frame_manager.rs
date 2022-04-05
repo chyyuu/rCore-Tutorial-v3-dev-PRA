@@ -74,7 +74,7 @@ impl ClockQue {
             let vpn = *(P2V_MAP.exclusive_access().get(&ppn).unwrap());
             let pte = page_table.find_pte(vpn).unwrap();
             if !pte.is_valid() {
-                panic!("[kernel] PAGE FAULT: Pte not valid in PRA Clock pop.");
+                panic!("[kernel] PAGE FAULT: (local) Pte not valid in PRA Clock pop.");
             }
             if !pte.accessed() {
                 self.ppns.remove(self.ptr);
@@ -86,7 +86,7 @@ impl ClockQue {
             pte.change_access();
             // println!("change pte access.");
             if pte.accessed() {
-                panic!("[kernel] PAGE FAULT: Pte access did not change.");
+                panic!("[kernel] PAGE FAULT: (local) Pte access did not change.");
             }
             self.inc();
         }
@@ -98,7 +98,7 @@ impl ClockQue {
             let vpn = *(P2V_MAP.exclusive_access().get(&ppn).unwrap());
             let pte = page_table.find_pte(vpn).unwrap();
             if !pte.is_valid() {
-                panic!("[kernel] PAGE FAULT: Pte not valid in PRA Clock pop.");
+                panic!("[kernel] PAGE FAULT: (local) Pte not valid in PRA Clock pop.");
             }
             if !pte.accessed() && !pte.dirty() {
                 self.ppns.remove(self.ptr);
@@ -111,14 +111,14 @@ impl ClockQue {
                 pte.change_access();
                 // println!("change pte access.");
                 if pte.accessed() {
-                    panic!("[kernel] PAGE FAULT: Pte access did not change.");
+                    panic!("[kernel] PAGE FAULT: (local) Pte access did not change.");
                 }
             }
             else {
                 pte.change_dirty();
                 // println!("change pte dirty.");
                 if pte.dirty() {
-                    panic!("[kernel] PAGE FAULT: Pte dirty did not change.");
+                    panic!("[kernel] PAGE FAULT: (local) Pte dirty did not change.");
                 }
             }
             self.inc();
@@ -301,7 +301,7 @@ impl GlobalFrameManager {
                             if pte.is_valid() {
                                 pte_recorder[self.idx].insert((token, vpn), pte.accessed());
                                 if pte.accessed() {
-                                    println!("[kernel] PAGE FAULT: (global) Changing pte access, ppn: {} pte.ppn: {}.", ppn.0, pte.ppn().0);
+                                    println!("[kernel] Supervisor Timer: Changing pte access, ppn: {} pte.ppn: {}.", ppn.0, pte.ppn().0);
                                     pte.change_access();
                                 }
                             }
@@ -320,7 +320,7 @@ impl GlobalFrameManager {
                         if pte.is_valid() {
                             pte_recorder[self.idx].insert((token, vpn), pte.accessed());
                             if pte.accessed() {
-                                println!("[kernel] PAGE FAULT: (global) Changing pte access, ppn: {} pte.ppn: {}.", ppn.0, pte.ppn().0);
+                                println!("[kernel] Supervisor Timer: Changing pte access, ppn: {} pte.ppn: {}.", ppn.0, pte.ppn().0);
                                 pte.change_access();
                             }
                         }

@@ -70,7 +70,7 @@ fn local_pra(memory_set: &mut MemorySet, vpn: VirtPageNum, token: usize) -> bool
                     if let Some(frame) = frame_alloc() { // enough frame
                         ppn = frame.ppn;
                         memory_set.areas[i].data_frames.insert(vpn, frame);
-                        println!("[kernel] PAGE FAULT: Frame enough, allocating ppn:{} frame.", ppn.0);
+                        println!("[kernel] PAGE FAULT: (local) Frame enough, allocating ppn:{} frame.", ppn.0);
                     }
                     else {  // frame not enough, need to swap out a frame
                         ppn = memory_set.get_next_frame().unwrap();
@@ -84,7 +84,7 @@ fn local_pra(memory_set: &mut MemorySet, vpn: VirtPageNum, token: usize) -> bool
                             }
                         }
                         p2v_map.remove(&ppn);
-                        println!("[kernel] PAGE FAULT: Frame not enough, swapping out ppn:{} frame.", ppn.0);
+                        println!("[kernel] PAGE FAULT: (local) Frame not enough, swapping out ppn:{} frame.", ppn.0);
         
                         let frame = frame_alloc().unwrap();
                         memory_set.areas[i].data_frames.insert(vpn, frame);
@@ -93,7 +93,7 @@ fn local_pra(memory_set: &mut MemorySet, vpn: VirtPageNum, token: usize) -> bool
                     if ide_manager.check(token, vpn) {
                         let data = ppn.get_bytes_array();
                         ide_manager.swap_out(token, vpn, data);
-                        println!("[kernel] PAGE FAULT: Swapping in vpn:{} ppn:{} frame.", vpn.0, ppn.0);
+                        println!("[kernel] PAGE FAULT: (local) Swapping in vpn:{} ppn:{} frame.", vpn.0, ppn.0);
                     }
                 }
             }
@@ -109,9 +109,9 @@ fn local_pra(memory_set: &mut MemorySet, vpn: VirtPageNum, token: usize) -> bool
                     }
                 }
                 p2v_map.remove(&ppn);
-                println!("[kernel] PAGE FAULT: Swapping out ppn:{} frame.", ppn.0);
+                println!("[kernel] PAGE FAULT: (local) Swapping out ppn:{} frame.", ppn.0);
             }
-            println!("[kernel] PAGE FAULT: Mapping vpn:{} to ppn:{}.", vpn.0, ppn.0);
+            println!("[kernel] PAGE FAULT: (local) Mapping vpn:{} to ppn:{}.", vpn.0, ppn.0);
             memory_set.page_table.map(vpn, ppn, memory_set.areas[i].get_flag_bits());
             P2V_MAP.exclusive_access().insert(ppn, vpn);
             memory_set.insert_frame(ppn);
@@ -138,11 +138,11 @@ fn global_pra(memory_set: &mut MemorySet, vpn: VirtPageNum, token: usize) -> boo
                     if IDE_MANAGER.exclusive_access().check(token, vpn) {
                         let data = ppn.get_bytes_array();
                         IDE_MANAGER.exclusive_access().swap_out(token, vpn, data);
-                        println!("[kernel] PAGE FAULT: Swapping in vpn:{} ppn:{} frame.", vpn.0, ppn.0);
+                        println!("[kernel] PAGE FAULT: (global) Swapping in vpn:{} ppn:{} frame.", vpn.0, ppn.0);
                     }
                 }
             }
-            println!("[kernel] PAGE FAULT: Mapping vpn:{} to ppn:{}.", vpn.0, ppn.0);
+            println!("[kernel] PAGE FAULT: (global) Mapping vpn:{} to ppn:{}.", vpn.0, ppn.0);
             memory_set.page_table.map(vpn, ppn, memory_set.areas[i].get_flag_bits());
             P2V_MAP.exclusive_access().insert(ppn, vpn);
             memory_set.insert_frame(ppn);
