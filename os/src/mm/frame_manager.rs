@@ -308,6 +308,7 @@ impl GlobalFrameManager {
                         }
                     }
                 }
+                // println!("{}", self.idx);
                 let process = current_process();
                 let mut pcb = process.inner_exclusive_access();
                 let token = pcb.get_user_token();

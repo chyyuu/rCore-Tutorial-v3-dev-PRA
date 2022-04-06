@@ -48,6 +48,24 @@ impl IdeManager {
     }
 }
 
+pub struct Counter {
+    val: usize,
+}
+
+impl Counter {
+    fn new() -> Self {
+        Counter {
+            val: 0,
+        }
+    }
+    pub fn acc(&mut self) {
+        self.val += 1;
+    }
+    pub fn get_val(&mut self) -> usize {
+        self.val
+    }
+}
+
 lazy_static! {
     pub static ref P2V_MAP: Arc<UPSafeCell<BTreeMap<PhysPageNum, VirtPageNum>>> =
         Arc::new(unsafe { UPSafeCell::new( BTreeMap::new()) });
@@ -55,6 +73,8 @@ lazy_static! {
         Arc::new(unsafe { UPSafeCell::new( IdeManager::new()) });
     pub static ref GFM: Arc<UPSafeCell<GlobalFrameManager>> =
         Arc::new(unsafe { UPSafeCell::new( GlobalFrameManager::new(CHOSEN_PRA)) });
+    pub static ref PAGE_FAULT_CNT: Arc<UPSafeCell<Counter>> =
+        Arc::new(unsafe { UPSafeCell::new( Counter::new() ) });
 }
 
 fn local_pra(memory_set: &mut MemorySet, vpn: VirtPageNum, token: usize) -> bool {
@@ -159,7 +179,7 @@ pub fn do_pgfault(addr: usize, flag: usize) -> bool {
     let token = pcb.get_user_token();
     let memory_set = &mut pcb.memory_set;
     let va: VirtAddr = addr.into();
-    let vpn: VirtPageNum = va.into();
+    let vpn: VirtPageNum = va.floor();
     println!("[kernel] PAGE FAULT: addr:{} vpn:{}", addr, vpn.0);
     if let Some(pte) = memory_set.page_table.translate(vpn) {
         if pte.is_valid() {

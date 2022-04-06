@@ -16,7 +16,7 @@ pub use page_table::{
     translated_byte_buffer, translated_ref, translated_refmut, translated_str, PageTable,
     PageTableEntry, UserBuffer, UserBufferIterator,
 };
-pub use vmm::{P2V_MAP, IDE_MANAGER, GFM, do_pgfault};
+pub use vmm::{P2V_MAP, IDE_MANAGER, GFM, PAGE_FAULT_CNT, do_pgfault};
 pub use frame_manager::{PRA, LocalFrameManager, GlobalFrameManager, check_workingset};
 
 pub fn init() {

@@ -6,7 +6,7 @@ use crate::task::{
     check_signals_of_current, current_add_signal, current_trap_cx, current_trap_cx_user_va,
     current_user_token, exit_current_and_run_next, suspend_current_and_run_next, SignalFlags,
 };
-use crate::mm::{do_pgfault, check_workingset};
+use crate::mm::{PAGE_FAULT_CNT, do_pgfault, check_workingset};
 use crate::timer::{check_timer, set_next_trigger};
 use core::arch::{asm, global_asm};
 use riscv::register::{
@@ -77,6 +77,7 @@ pub fn trap_handler() -> ! {
             //     current_trap_cx().sepc,
             // );
             // current_add_signal(SignalFlags::SIGSEGV);
+            PAGE_FAULT_CNT.exclusive_access().acc();
             if !do_pgfault(stval, 0) {
                 current_add_signal(SignalFlags::SIGSEGV);
             }
@@ -90,6 +91,7 @@ pub fn trap_handler() -> ! {
             //     current_trap_cx().sepc,
             // );
             // current_add_signal(SignalFlags::SIGSEGV);
+            PAGE_FAULT_CNT.exclusive_access().acc();
             if !do_pgfault(stval, 1) {
                 current_add_signal(SignalFlags::SIGSEGV);
             }
@@ -103,6 +105,7 @@ pub fn trap_handler() -> ! {
             //     current_trap_cx().sepc,
             // );
             // current_add_signal(SignalFlags::SIGSEGV);
+            PAGE_FAULT_CNT.exclusive_access().acc();
             if !do_pgfault(stval, 2) {
                 current_add_signal(SignalFlags::SIGSEGV);
             }
