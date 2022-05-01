@@ -84,7 +84,7 @@ impl ClockQue {
                 return Some(ppn);
             }
             pte.change_access();
-            // println!("change pte access.");
+            println!("[kernel] PAGE FAULT: (local) Changing pte access, ppn: {}.", ppn.0);
             if pte.accessed() {
                 panic!("[kernel] PAGE FAULT: (local) Pte access did not change.");
             }
@@ -109,14 +109,14 @@ impl ClockQue {
             }
             if pte.accessed() {
                 pte.change_access();
-                // println!("change pte access.");
+                println!("[kernel] PAGE FAULT: (local) Changing pte access, ppn: {}.", ppn.0);
                 if pte.accessed() {
                     panic!("[kernel] PAGE FAULT: (local) Pte access did not change.");
                 }
             }
             else {
                 pte.change_dirty();
-                // println!("change pte dirty.");
+                println!("[kernel] PAGE FAULT: (local) Changing pte dirty, ppn: {}.", ppn.0);
                 if pte.dirty() {
                     panic!("[kernel] PAGE FAULT: (local) Pte dirty did not change.");
                 }
