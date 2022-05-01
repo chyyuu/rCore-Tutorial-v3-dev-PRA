@@ -28,10 +28,13 @@ lazy_static::lazy_static! {
 }
 
 #[no_mangle]
-pub fn start_kernel() -> ! {
+pub extern "C" fn start_kernel(_arg0: usize, _arg1: usize) -> ! {
+    let cpu_id = arch::get_cpu_id();
     // 只有一个核能进入这个 if 并执行全局初始化操作
     if can_do_global_init() {
+        println!("I am the first CPU [{}].", cpu_id);
         memory::clear_bss(); // 清空 bss 段
+        mark_global_init_finished(); // 通知全局初始化已完成
         extern "C" {
             fn stext();
             fn etext();
@@ -53,15 +56,13 @@ pub fn start_kernel() -> ! {
             boot_stack as usize, boot_stack_top as usize
         );
         println!(".bss [{:#x}, {:#x})", sbss as usize, ebss as usize);    
-        mark_global_init_finished(); // 通知全局初始化已完成
     }
+
     // 等待第一个核执行完上面的全局初始化
     wait_global_init_finished();
-
+    println!("I'm CPU [{}].", cpu_id);
     mark_bootstrap_finish();
     wait_all_cpu_started();
-    let cpu_id = arch::get_cpu_id();
-    println!("I'm CPU [{}]", cpu_id);
 
     if cpu_id == config::BOOTSTRAP_CPU_ID{
         panic!("Shutdown machine!");
@@ -77,8 +78,7 @@ fn can_do_global_init() -> bool {
 /// 标记那些全局只执行一次的启动步骤已完成。
 /// 内核必须由 cpu_id 等于 AP_CAN_INIT 初始值的核先启动并执行这些全局只需要一次的操作，然后其他的核才能启动 
 fn mark_global_init_finished() {
-    GLOBAL_INIT_FINISHED.store(true, Ordering::Relaxed)
-    // GLOBAL_INIT_FINISHED.compare_exchange(false, true, Ordering::Release, Ordering::Relaxed).unwrap();
+    GLOBAL_INIT_FINISHED.compare_exchange(false, true, Ordering::Release, Ordering::Relaxed).unwrap();
 }
 
 /// 等待那些全局只执行一次的启动步骤是否完成
