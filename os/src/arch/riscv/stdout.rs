@@ -23,7 +23,8 @@ impl Write for Stdout {
     }
 }
 
+static STDOUT: Mutex<Stdout> = Mutex::new(Stdout);
+
 pub fn stdout_puts(fmt: Arguments) {
-    static STDOUT: Mutex<Stdout> = Mutex::new(Stdout);
     STDOUT.lock().write_fmt(fmt).unwrap();
 }

@@ -34,7 +34,6 @@ pub extern "C" fn start_kernel(_arg0: usize, _arg1: usize) -> ! {
     if can_do_global_init() {
         println!("I am the first CPU [{}].", cpu_id);
         memory::clear_bss(); // 清空 bss 段
-        mark_global_init_finished(); // 通知全局初始化已完成
         extern "C" {
             fn stext();
             fn etext();
@@ -56,6 +55,7 @@ pub extern "C" fn start_kernel(_arg0: usize, _arg1: usize) -> ! {
             boot_stack as usize, boot_stack_top as usize
         );
         println!(".bss [{:#x}, {:#x})", sbss as usize, ebss as usize);    
+        mark_global_init_finished(); // 通知全局初始化已完成
     }
 
     // 等待第一个核执行完上面的全局初始化
@@ -72,7 +72,7 @@ pub extern "C" fn start_kernel(_arg0: usize, _arg1: usize) -> ! {
 
 /// 是否还没有核进行全局初始化，如是则返回 true
 fn can_do_global_init() -> bool {
-    GLOBAL_INIT_STARTED.compare_exchange(false, true, Ordering::Release, Ordering::Relaxed).is_ok()
+    GLOBAL_INIT_STARTED.compare_exchange(false, true, Ordering::Acquire, Ordering::Relaxed).is_ok()
 }
 
 /// 标记那些全局只执行一次的启动步骤已完成。
