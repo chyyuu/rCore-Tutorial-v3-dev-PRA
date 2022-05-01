@@ -1,5 +1,5 @@
 # Building
-TARGET := riscv64gc-unknown-none-elf
+TARGET := riscv64imac-unknown-none-elf
 MODE := release
 KERNEL_ELF := target/$(TARGET)/$(MODE)/os
 KERNEL_BIN := $(KERNEL_ELF).bin
@@ -10,6 +10,8 @@ BOARD ?= qemu
 SBI ?= rustsbi
 BOOTLOADER := ../bootloader/$(SBI)-$(BOARD).bin
 K210_BOOTLOADER_SIZE := 131072
+
+SMP ?= 4
 
 # KERNEL ENTRY
 ifeq ($(BOARD), qemu)
@@ -39,7 +41,7 @@ else ifeq ($(BOARD), k210)
 endif
 
 env:
-	(rustup target list | grep "riscv64gc-unknown-none-elf (installed)") || rustup target add $(TARGET)
+	(rustup target list | grep "riscv64imac-unknown-none-elf (installed)") || rustup target add $(TARGET)
 	cargo install cargo-binutils --vers =0.3.3
 	rustup component add rust-src
 	rustup component add llvm-tools-preview
@@ -49,9 +51,7 @@ $(KERNEL_BIN): kernel
 
 kernel:
 	@echo Platform: $(BOARD)
-	@cp src/linker-$(BOARD).ld src/linker.ld
 	@cargo build --release
-	@rm src/linker.ld
 
 clean:
 	@cargo clean
@@ -71,6 +71,8 @@ run: run-inner
 run-inner: build
 ifeq ($(BOARD),qemu)
 	@qemu-system-riscv64 \
+		-nographic \
+		-smp $(SMP) \
 		-machine virt \
 		-nographic \
 		-bios $(BOOTLOADER) \
