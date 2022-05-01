@@ -32,7 +32,6 @@ pub fn start_kernel() -> ! {
     // 只有一个核能进入这个 if 并执行全局初始化操作
     if can_do_global_init() {
         memory::clear_bss(); // 清空 bss 段
-        memory::init();
         extern "C" {
             fn stext();
             fn etext();

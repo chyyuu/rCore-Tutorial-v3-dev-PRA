@@ -8,6 +8,5 @@ edition = "2018"
 
 [dependencies]
 spin = "0.7.0"
-buddy_system_allocator = "0.5"
 lazy_static = { version = "1.4", features = ["spin_no_std"] }
 riscv = { git = "https://github.com/rcore-os/riscv", features = ["inline-asm"] }
