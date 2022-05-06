@@ -50,8 +50,11 @@ $(KERNEL_BIN): kernel
 	@$(OBJCOPY) $(KERNEL_ELF) --strip-all -O binary $@
 
 kernel:
+	@cd ../user && make build
 	@echo Platform: $(BOARD)
-	@cargo build --release
+	# @cp src/linker-$(BOARD).ld src/linker.ld
+	@cargo build --release --features "board_$(BOARD)"
+	# @rm src/linker.ld
 
 clean:
 	@cargo clean

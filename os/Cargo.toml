@@ -8,5 +8,11 @@ edition = "2018"
 
 [dependencies]
 spin = "0.7.0"
-lazy_static = { version = "1.4", features = ["spin_no_std"] }
+lazy_static = { version = "1.4.0", features = ["spin_no_std"] }
 riscv = { git = "https://github.com/rcore-os/riscv", features = ["inline-asm"] }
+cfg-if = { version = "1.0.0" }
+buddy_system_allocator = "0.5"
+
+[features]
+board_qemu = []
+board_k210 = []

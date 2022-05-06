@@ -4,7 +4,7 @@ pub mod stdout;
 
 pub use sbi::{
     set_timer,
-    shutdown,   
+    shutdown,
 };
 
 core::arch::global_asm!(include_str!("boot/entry.asm"));

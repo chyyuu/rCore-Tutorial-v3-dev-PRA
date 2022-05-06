@@ -1,3 +1,8 @@
+mod heap;
+
+pub fn init() {
+    heap::init();
+}
 
 pub fn clear_bss() {
     extern "C" {

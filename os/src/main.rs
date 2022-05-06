@@ -3,15 +3,29 @@
 #![feature(panic_info_message)]
 #![feature(default_alloc_error_handler)]
 
+#[cfg(feature = "board_k210")]
+#[path = "boards/k210.rs"]
+mod board;
+#[cfg(not(any(feature = "board_k210")))]
+#[path = "boards/qemu.rs"]
+mod board;
 #[macro_use]
 mod console;
-mod lang_items;
 mod config;
+mod lang_items;
 mod memory;
+mod timer;
+mod loader;
+
+pub mod syscall;
+pub mod task;
+pub mod trap;
 
 #[cfg(target_arch = "riscv64")]
 #[path = "arch/riscv/mod.rs"]
 mod arch;
+
+core::arch::global_asm!(include_str!("link_app.S"));
 
 use core::sync::atomic::{Ordering, AtomicBool, AtomicUsize};
 use core::hint::spin_loop;
@@ -34,40 +48,32 @@ pub extern "C" fn start_kernel(_arg0: usize, _arg1: usize) -> ! {
     if can_do_global_init() {
         println!("I am the first CPU [{}].", cpu_id);
         memory::clear_bss(); // 清空 bss 段
-        extern "C" {
-            fn stext();
-            fn etext();
-            fn srodata();
-            fn erodata();
-            fn sdata();
-            fn edata();
-            fn sbss();
-            fn ebss();
-            fn boot_stack();
-            fn boot_stack_top();
-        }
-        println!("Hello, world!");
-        println!(".text [{:#x}, {:#x})", stext as usize, etext as usize);
-        println!(".rodata [{:#x}, {:#x})", srodata as usize, erodata as usize);
-        println!(".data [{:#x}, {:#x})", sdata as usize, edata as usize);
-        println!(
-            "boot_stack [{:#x}, {:#x})",
-            boot_stack as usize, boot_stack_top as usize
-        );
-        println!(".bss [{:#x}, {:#x})", sbss as usize, ebss as usize);    
+        memory::init();
+        loader::load_apps();
         mark_global_init_finished(); // 通知全局初始化已完成
     }
 
     // 等待第一个核执行完上面的全局初始化
     wait_global_init_finished();
     println!("I'm CPU [{}].", cpu_id);
+
+    trap::init();
+    trap::enable_timer_interrupt();
+    timer::set_next_trigger();
+
     mark_bootstrap_finish();
     wait_all_cpu_started();
 
-    if cpu_id == config::BOOTSTRAP_CPU_ID{
-        panic!("Shutdown machine!");
+    if config::IS_SINGLE_CORE {
+        if cpu_id == config::BOOTSTRAP_CPU_ID {
+            task::run_first_task();
+        } else {
+            loop {}
+        }
+    } else {
+        task::run_first_task();
     }
-    else { loop{} }
+    unreachable!();
 }
 
 /// 是否还没有核进行全局初始化，如是则返回 true
