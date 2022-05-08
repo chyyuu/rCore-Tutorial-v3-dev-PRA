@@ -3,10 +3,12 @@ mod switch;
 #[allow(clippy::module_inception)]
 mod task;
 
-use crate::config::{MAX_APP_NUM, CPU_NUM};
-use crate::loader::{get_num_app, init_app_cx};
+use crate::config::{CPU_NUM};
 use crate::arch::get_cpu_id;
 use spin::Mutex;
+use crate::loader::{get_app_data, get_num_app};
+use crate::trap::TrapContext;
+use alloc::vec::Vec;
 use lazy_static::*;
 use switch::__switch;
 use task::{TaskControlBlock, TaskStatus};
@@ -19,21 +21,20 @@ pub struct TaskManager {
 }
 
 struct TaskManagerInner {
-    tasks: [TaskControlBlock; MAX_APP_NUM],
+    tasks: Vec<TaskControlBlock>,
     current_task: [usize; CPU_NUM],
     cpu_free: usize,
+    inner: UPSafeCell<TaskManagerInner>,
 }
 
 lazy_static! {
     pub static ref TASK_MANAGER: TaskManager = {
+        println!("init TASK_MANAGER");
         let num_app = get_num_app();
-        let mut tasks = [TaskControlBlock {
-            task_cx: TaskContext::zero_init(),
-            task_status: TaskStatus::UnInit,
-        }; MAX_APP_NUM];
-        for (i, task) in tasks.iter_mut().enumerate() {
-            task.task_cx = TaskContext::goto_restore(init_app_cx(i));
-            task.task_status = TaskStatus::Ready;
+        println!("num_app = {}", num_app);
+        let mut tasks: Vec<TaskControlBlock> = Vec::new();
+        for i in 0..num_app {
+            tasks.push(TaskControlBlock::new(get_app_data(i), i));
         }
         TaskManager {
             num_app,
@@ -49,13 +50,6 @@ lazy_static! {
 }
 
 impl TaskManager {
-    fn find_next_task(&self, inner: &TaskManagerInner) -> Option<usize> {
-        let current = inner.current_task[get_cpu_id()];
-        (current + 1..current + self.num_app + 1)
-            .map(|id| id % self.num_app)
-            .find(|id| inner.tasks[*id].task_status == TaskStatus::Ready)
-    }
-
     fn run_first_task(&self) -> ! {
         let cpu_id = get_cpu_id();
         let mut inner = self.inner.lock();
@@ -78,6 +72,23 @@ impl TaskManager {
             __switch(&mut _unused as *mut TaskContext, next_task_cx_ptr);
         }
         panic!("unreachable in run_first_task!");
+    }
+
+    fn find_next_task(&self, inner: &TaskManagerInner) -> Option<usize> {
+        let current = inner.current_task[get_cpu_id()];
+        (current + 1..current + self.num_app + 1)
+            .map(|id| id % self.num_app)
+            .find(|id| inner.tasks[*id].task_status == TaskStatus::Ready)
+    }
+
+    fn get_current_token(&self) -> usize {
+        let inner = self.inner.lock();
+        inner.tasks[inner.current_task].get_user_token()
+    }
+
+    fn get_current_trap_cx(&self) -> &'static mut TrapContext {
+        let inner = self.inner.lock();
+        inner.tasks[inner.current_task].get_trap_cx()
     }
 
     fn run_next_task(&self, status:TaskStatus) {
@@ -121,4 +132,12 @@ pub fn suspend_current_and_run_next() {
 
 pub fn exit_current_and_run_next() {
     TASK_MANAGER.run_next_task(TaskStatus::Exited);
+}
+
+pub fn current_user_token() -> usize {
+    TASK_MANAGER.get_current_token()
+}
+
+pub fn current_trap_cx() -> &'static mut TrapContext {
+    TASK_MANAGER.get_current_trap_cx()
 }

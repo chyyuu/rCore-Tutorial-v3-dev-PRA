@@ -1,7 +1,23 @@
 #![no_std]
 #![no_main]
 #![feature(panic_info_message)]
+<<<<<<< HEAD
 #![feature(default_alloc_error_handler)]
+=======
+#![feature(alloc_error_handler)]
+
+extern crate alloc;
+
+#[macro_use]
+extern crate bitflags;
+
+#[cfg(feature = "board_k210")]
+#[path = "boards/k210.rs"]
+mod board;
+#[cfg(not(any(feature = "board_k210")))]
+#[path = "boards/qemu.rs"]
+mod board;
+>>>>>>> ch4
 
 #[cfg(feature = "board_k210")]
 #[path = "boards/k210.rs"]
@@ -13,14 +29,28 @@ mod board;
 mod console;
 mod config;
 mod lang_items;
+<<<<<<< HEAD
 mod memory;
 mod timer;
 mod loader;
+=======
+mod loader;
+mod mm;
+mod sbi;
+mod sync;
+mod syscall;
+mod task;
+mod timer;
+mod trap;
+
+use core::arch::global_asm;
+>>>>>>> ch4
 
 pub mod syscall;
 pub mod task;
 pub mod trap;
 
+<<<<<<< HEAD
 #[cfg(target_arch = "riscv64")]
 #[path = "arch/riscv/mod.rs"]
 mod arch;
@@ -104,4 +134,30 @@ fn wait_all_cpu_started() {
     while BOOTED_CPU_NUM.load(Ordering::Acquire) < config::CPU_NUM {
         spin_loop();
     }
+=======
+fn clear_bss() {
+    extern "C" {
+        fn sbss();
+        fn ebss();
+    }
+    unsafe {
+        core::slice::from_raw_parts_mut(sbss as usize as *mut u8, ebss as usize - sbss as usize)
+            .fill(0);
+    }
+}
+
+#[no_mangle]
+pub fn rust_main() -> ! {
+    clear_bss();
+    println!("[kernel] Hello, world!");
+    mm::init();
+    println!("[kernel] back to world!");
+    mm::remap_test();
+    trap::init();
+    //trap::enable_interrupt();
+    trap::enable_timer_interrupt();
+    timer::set_next_trigger();
+    task::run_first_task();
+    panic!("Unreachable in rust_main!");
+>>>>>>> ch4
 }
