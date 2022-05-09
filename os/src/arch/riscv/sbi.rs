@@ -56,7 +56,7 @@ pub fn console_put_usize_in_hex(val: usize) {
         let c = if bit4 < 10 { b'0' + bit4 } else { b'A' + bit4 - 10 };
         console_putchar(c as usize);
     };
-    for i in 0..10 {
+    for _i in 0..10 {
         console_putchar(b'-' as usize);
     }
     console_putchar(b'\n' as usize);

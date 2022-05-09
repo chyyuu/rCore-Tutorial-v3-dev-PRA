@@ -33,8 +33,3 @@ lazy_static::lazy_static! {
 pub fn stdout_puts(fmt: Arguments) {
     STDOUT.lock().write_fmt(fmt).unwrap();
 }
-
-/// 输出到 stderr
-pub fn stderr_puts(fmt: Arguments) {
-    STDERR.lock().write_fmt(fmt).unwrap();
-}

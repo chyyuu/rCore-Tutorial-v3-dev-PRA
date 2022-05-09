@@ -1,10 +1,16 @@
 mod cpu;
 mod sbi;
+mod page_control;
 pub mod stdout;
 
 pub use sbi::{
     set_timer,
     shutdown,
+};
+
+pub use page_control::{
+    setSUMAccessClose,
+    setSUMAccessOpen,
 };
 
 core::arch::global_asm!(include_str!("boot/entry.asm"));

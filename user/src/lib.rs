@@ -10,10 +10,6 @@ mod syscall;
 #[no_mangle]
 #[link_section = ".text.entry"]
 pub extern "C" fn _start() -> ! {
-<<<<<<< HEAD
-    clear_bss();
-=======
->>>>>>> ch4
     exit(main());
     panic!("unreachable after sys_exit!");
 }
@@ -24,23 +20,8 @@ fn main() -> i32 {
     panic!("Cannot find main!");
 }
 
-<<<<<<< HEAD
-fn clear_bss() {
-    extern "C" {
-        fn start_bss();
-        fn end_bss();
-    }
-    (start_bss as usize..end_bss as usize).for_each(|addr| unsafe {
-        (addr as *mut u8).write_volatile(0);
-    });
-}
-
 use syscall::*;
 
-=======
-use syscall::*;
-
->>>>>>> ch4
 pub fn write(fd: usize, buf: &[u8]) -> isize {
     sys_write(fd, buf)
 }

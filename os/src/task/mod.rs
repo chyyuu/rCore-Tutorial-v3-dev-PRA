@@ -24,7 +24,6 @@ struct TaskManagerInner {
     tasks: Vec<TaskControlBlock>,
     current_task: [usize; CPU_NUM],
     cpu_free: usize,
-    inner: UPSafeCell<TaskManagerInner>,
 }
 
 lazy_static! {
@@ -38,13 +37,11 @@ lazy_static! {
         }
         TaskManager {
             num_app,
-            inner: unsafe {
-                Mutex::new(TaskManagerInner {
+            inner: Mutex::new(TaskManagerInner {
                     tasks,
                     current_task: [num_app - 1; CPU_NUM],
                     cpu_free: 0,
                 })
-            },
         }
     };
 }
@@ -62,7 +59,8 @@ impl TaskManager {
             drop(inner);
             loop{};
         }
-        let task0 = &mut inner.tasks[cpu_id];
+        let first = inner.current_task[cpu_id];
+        let task0 = &mut inner.tasks[first];
         task0.task_status = TaskStatus::Running;
         let next_task_cx_ptr = &task0.task_cx as *const TaskContext;
         drop(inner);
@@ -83,12 +81,12 @@ impl TaskManager {
 
     fn get_current_token(&self) -> usize {
         let inner = self.inner.lock();
-        inner.tasks[inner.current_task].get_user_token()
+        inner.tasks[inner.current_task[get_cpu_id()]].get_user_token()
     }
 
     fn get_current_trap_cx(&self) -> &'static mut TrapContext {
         let inner = self.inner.lock();
-        inner.tasks[inner.current_task].get_trap_cx()
+        inner.tasks[inner.current_task[get_cpu_id()]].get_trap_cx()
     }
 
     fn run_next_task(&self, status:TaskStatus) {

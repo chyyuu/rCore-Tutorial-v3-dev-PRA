@@ -1,56 +1,27 @@
 #![no_std]
 #![no_main]
 #![feature(panic_info_message)]
-<<<<<<< HEAD
-#![feature(default_alloc_error_handler)]
-=======
 #![feature(alloc_error_handler)]
 
-extern crate alloc;
-
-#[macro_use]
-extern crate bitflags;
-
 #[cfg(feature = "board_k210")]
 #[path = "boards/k210.rs"]
 mod board;
 #[cfg(not(any(feature = "board_k210")))]
 #[path = "boards/qemu.rs"]
 mod board;
->>>>>>> ch4
 
-#[cfg(feature = "board_k210")]
-#[path = "boards/k210.rs"]
-mod board;
-#[cfg(not(any(feature = "board_k210")))]
-#[path = "boards/qemu.rs"]
-mod board;
 #[macro_use]
 mod console;
 mod config;
 mod lang_items;
-<<<<<<< HEAD
 mod memory;
-mod timer;
 mod loader;
-=======
-mod loader;
-mod mm;
-mod sbi;
-mod sync;
-mod syscall;
-mod task;
 mod timer;
-mod trap;
-
-use core::arch::global_asm;
->>>>>>> ch4
 
 pub mod syscall;
 pub mod task;
 pub mod trap;
 
-<<<<<<< HEAD
 #[cfg(target_arch = "riscv64")]
 #[path = "arch/riscv/mod.rs"]
 mod arch;
@@ -59,6 +30,11 @@ core::arch::global_asm!(include_str!("link_app.S"));
 
 use core::sync::atomic::{Ordering, AtomicBool, AtomicUsize};
 use core::hint::spin_loop;
+
+extern crate alloc;
+
+#[macro_use]
+extern crate bitflags;
 
 extern crate lazy_static;
 
@@ -79,7 +55,6 @@ pub extern "C" fn start_kernel(_arg0: usize, _arg1: usize) -> ! {
         println!("I am the first CPU [{}].", cpu_id);
         memory::clear_bss(); // 清空 bss 段
         memory::init();
-        loader::load_apps();
         mark_global_init_finished(); // 通知全局初始化已完成
     }
 
@@ -87,7 +62,9 @@ pub extern "C" fn start_kernel(_arg0: usize, _arg1: usize) -> ! {
     wait_global_init_finished();
     println!("I'm CPU [{}].", cpu_id);
 
+    memory::enable_kernel_page_table();
     trap::init();
+    arch::setSUMAccessOpen();
     trap::enable_timer_interrupt();
     timer::set_next_trigger();
 
@@ -134,30 +111,4 @@ fn wait_all_cpu_started() {
     while BOOTED_CPU_NUM.load(Ordering::Acquire) < config::CPU_NUM {
         spin_loop();
     }
-=======
-fn clear_bss() {
-    extern "C" {
-        fn sbss();
-        fn ebss();
-    }
-    unsafe {
-        core::slice::from_raw_parts_mut(sbss as usize as *mut u8, ebss as usize - sbss as usize)
-            .fill(0);
-    }
-}
-
-#[no_mangle]
-pub fn rust_main() -> ! {
-    clear_bss();
-    println!("[kernel] Hello, world!");
-    mm::init();
-    println!("[kernel] back to world!");
-    mm::remap_test();
-    trap::init();
-    //trap::enable_interrupt();
-    trap::enable_timer_interrupt();
-    timer::set_next_trigger();
-    task::run_first_task();
-    panic!("Unreachable in rust_main!");
->>>>>>> ch4
 }

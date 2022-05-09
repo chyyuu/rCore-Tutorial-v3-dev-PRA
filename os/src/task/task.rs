@@ -1,6 +1,6 @@
 use super::TaskContext;
 use crate::config::{kernel_stack_position, TRAP_CONTEXT};
-use crate::mm::{MapPermission, MemorySet, PhysPageNum, VirtAddr, KERNEL_SPACE};
+use crate::memory::{MapPermission, MemorySet, PhysPageNum, VirtAddr, KERNEL_SPACE};
 use crate::trap::{trap_handler, TrapContext};
 
 pub struct TaskControlBlock {
@@ -28,7 +28,7 @@ impl TaskControlBlock {
         let task_status = TaskStatus::Ready;
         // map a kernel-stack in kernel space
         let (kernel_stack_bottom, kernel_stack_top) = kernel_stack_position(app_id);
-        KERNEL_SPACE.exclusive_access().insert_framed_area(
+        KERNEL_SPACE.lock().insert_framed_area(
             kernel_stack_bottom.into(),
             kernel_stack_top.into(),
             MapPermission::R | MapPermission::W,
@@ -45,7 +45,7 @@ impl TaskControlBlock {
         *trap_cx = TrapContext::app_init_context(
             entry_point,
             user_sp,
-            KERNEL_SPACE.exclusive_access().token(),
+            KERNEL_SPACE.lock().token(),
             kernel_stack_top,
             trap_handler as usize,
         );
