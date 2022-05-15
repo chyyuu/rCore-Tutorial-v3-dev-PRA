@@ -3,6 +3,10 @@
 #![feature(panic_info_message)]
 #![feature(alloc_error_handler)]
 
+#[cfg(target_arch = "riscv64")]
+#[path = "arch/riscv/mod.rs"]
+mod arch;
+
 #[cfg(feature = "board_k210")]
 #[path = "boards/k210.rs"]
 mod board;
@@ -12,21 +16,16 @@ mod board;
 
 #[macro_use]
 mod console;
+mod drivers;
+mod fs;
+mod memory;
 mod config;
 mod lang_items;
-mod memory;
-mod loader;
 mod timer;
 
 pub mod syscall;
 pub mod task;
 pub mod trap;
-
-#[cfg(target_arch = "riscv64")]
-#[path = "arch/riscv/mod.rs"]
-mod arch;
-
-core::arch::global_asm!(include_str!("link_app.S"));
 
 use core::sync::atomic::{Ordering, AtomicBool, AtomicUsize};
 use core::hint::spin_loop;
@@ -58,7 +57,7 @@ pub extern "C" fn start_kernel(_arg0: usize, _arg1: usize) -> ! {
         // memory::remap_test();
         task::add_initproc();
         println!("after initproc!");
-        loader::list_apps();
+        fs::list_apps();
         mark_global_init_finished(); // 通知全局初始化已完成
     }
 

@@ -1,4 +1,4 @@
-use crate::loader::get_app_data_by_name;
+use crate::fs::{open_file, OpenFlags};
 use crate::memory::{translated_refmut, translated_str};
 use crate::task::{
     add_task, current_task, current_user_token, exit_current_and_run_next,
@@ -42,9 +42,10 @@ pub fn sys_fork() -> isize {
 pub fn sys_exec(path: *const u8) -> isize {
     let token = current_user_token();
     let path = translated_str(token, path);
-    if let Some(data) = get_app_data_by_name(path.as_str()) {
+    if let Some(app_inode) = open_file(path.as_str(), OpenFlags::RDONLY) {
+        let all_data = app_inode.read_all();
         let task = current_task().unwrap();
-        task.exec(data);
+        task.exec(all_data.as_slice());
         0
     } else {
         -1
@@ -74,7 +75,7 @@ pub fn sys_waitpid(pid: isize, exit_code_ptr: *mut i32) -> isize {
     });
     if let Some((idx, _)) = pair {
         let child = inner.children.remove(idx);
-        // confirm that child will be deallocated after removing from children list
+        // confirm that child will be deallocated after being removed from children list
         assert_eq!(Arc::strong_count(&child), 1);
         let found_pid = child.getpid();
         // ++++ temporarily access child TCB exclusively
@@ -85,5 +86,5 @@ pub fn sys_waitpid(pid: isize, exit_code_ptr: *mut i32) -> isize {
     } else {
         -2
     }
-    // ---- release current PCB lock automatically
+    // ---- release current PCB automatically
 }
