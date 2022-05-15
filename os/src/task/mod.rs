@@ -1,141 +1,82 @@
 mod context;
+mod manager;
+mod pid;
+mod processor;
 mod switch;
 #[allow(clippy::module_inception)]
 mod task;
 
-use crate::config::{CPU_NUM};
-use crate::arch::get_cpu_id;
-use spin::Mutex;
-use crate::loader::{get_app_data, get_num_app};
-use crate::trap::TrapContext;
-use alloc::vec::Vec;
+use crate::loader::get_app_data_by_name;
+use alloc::sync::Arc;
 use lazy_static::*;
+use manager::fetch_task;
 use switch::__switch;
 use task::{TaskControlBlock, TaskStatus};
 
 pub use context::TaskContext;
+pub use manager::add_task;
+pub use pid::{pid_alloc, KernelStack, PidHandle};
+pub use processor::{
+    current_task, current_trap_cx, current_user_token, run_tasks, schedule, take_current_task,
+};
 
-pub struct TaskManager {
-    num_app: usize,
-    inner: Mutex<TaskManagerInner>,
+pub fn suspend_current_and_run_next() {
+    // There must be an application running.
+    let task = take_current_task().unwrap();
+
+    // ---- access current TCB exclusively
+    let mut task_inner = task.inner_lock();
+    let task_cx_ptr = &mut task_inner.task_cx as *mut TaskContext;
+    // Change status to Ready
+    task_inner.task_status = TaskStatus::Ready;
+    drop(task_inner);
+    // ---- release current PCB
+
+    // push back to ready queue.
+    add_task(task);
+    // jump to scheduling cycle
+    schedule(task_cx_ptr);
 }
 
-struct TaskManagerInner {
-    tasks: Vec<TaskControlBlock>,
-    current_task: [usize; CPU_NUM],
-    cpu_free: usize,
+pub fn exit_current_and_run_next(exit_code: i32) {
+    // take from Processor
+    let task = take_current_task().unwrap();
+    // **** access current TCB exclusively
+    let mut inner = task.inner_lock();
+    // Change status to Zombie
+    inner.task_status = TaskStatus::Zombie;
+    // Record exit code
+    inner.exit_code = exit_code;
+    // do not move to its parent but under initproc
+
+    // ++++++ access initproc TCB exclusively
+    {
+        let mut initproc_inner = INITPROC.inner_lock();
+        for child in inner.children.iter() {
+            child.inner_lock().parent = Some(Arc::downgrade(&INITPROC));
+            initproc_inner.children.push(child.clone());
+        }
+    }
+    // ++++++ release parent PCB
+
+    inner.children.clear();
+    // deallocate user space
+    inner.memory_set.recycle_data_pages();
+    drop(inner);
+    // **** release current PCB
+    // drop task manually to maintain rc correctly
+    drop(task);
+    // we do not have to save task context
+    let mut _unused = TaskContext::zero_init();
+    schedule(&mut _unused as *mut _);
 }
 
 lazy_static! {
-    pub static ref TASK_MANAGER: TaskManager = {
-        println!("init TASK_MANAGER");
-        let num_app = get_num_app();
-        println!("num_app = {}", num_app);
-        let mut tasks: Vec<TaskControlBlock> = Vec::new();
-        for i in 0..num_app {
-            tasks.push(TaskControlBlock::new(get_app_data(i), i));
-        }
-        TaskManager {
-            num_app,
-            inner: Mutex::new(TaskManagerInner {
-                    tasks,
-                    current_task: [num_app - 1; CPU_NUM],
-                    cpu_free: 0,
-                })
-        }
-    };
+    pub static ref INITPROC: Arc<TaskControlBlock> = Arc::new(TaskControlBlock::new(
+        get_app_data_by_name("initproc").unwrap()
+    ));
 }
 
-impl TaskManager {
-    fn run_first_task(&self) -> ! {
-        let cpu_id = get_cpu_id();
-        let mut inner = self.inner.lock();
-        if let Some(next) = self.find_next_task(&inner) {
-            inner.current_task[cpu_id] = next;
-        }
-        else{
-            inner.cpu_free += 1;
-            println!("[kernel] cpu [{}] freed.", cpu_id);
-            drop(inner);
-            loop{};
-        }
-        let first = inner.current_task[cpu_id];
-        let task0 = &mut inner.tasks[first];
-        task0.task_status = TaskStatus::Running;
-        let next_task_cx_ptr = &task0.task_cx as *const TaskContext;
-        drop(inner);
-        let mut _unused = TaskContext::zero_init();
-        // before this, we should drop local variables that must be dropped manually
-        unsafe {
-            __switch(&mut _unused as *mut TaskContext, next_task_cx_ptr);
-        }
-        panic!("unreachable in run_first_task!");
-    }
-
-    fn find_next_task(&self, inner: &TaskManagerInner) -> Option<usize> {
-        let current = inner.current_task[get_cpu_id()];
-        (current + 1..current + self.num_app + 1)
-            .map(|id| id % self.num_app)
-            .find(|id| inner.tasks[*id].task_status == TaskStatus::Ready)
-    }
-
-    fn get_current_token(&self) -> usize {
-        let inner = self.inner.lock();
-        inner.tasks[inner.current_task[get_cpu_id()]].get_user_token()
-    }
-
-    fn get_current_trap_cx(&self) -> &'static mut TrapContext {
-        let inner = self.inner.lock();
-        inner.tasks[inner.current_task[get_cpu_id()]].get_trap_cx()
-    }
-
-    fn run_next_task(&self, status:TaskStatus) {
-        let cpu_id = get_cpu_id();
-        let mut inner = self.inner.lock();
-        let current = inner.current_task[cpu_id];
-        inner.tasks[current].task_status = status;
-        if let Some(next) = self.find_next_task(&inner) {
-            let current = inner.current_task[cpu_id];
-            inner.tasks[next].task_status = TaskStatus::Running;
-            inner.current_task[cpu_id] = next;
-            let current_task_cx_ptr = &mut inner.tasks[current].task_cx as *mut TaskContext;
-            let next_task_cx_ptr = &inner.tasks[next].task_cx as *const TaskContext;
-            drop(inner);
-            // before this, we should drop local variables that must be dropped manually
-            unsafe {
-                __switch(current_task_cx_ptr, next_task_cx_ptr);
-            }
-            // go back to user mode
-        } else {
-            inner.cpu_free += 1;
-            println!("[kernel] cpu [{}] freed.", cpu_id);
-            if inner.cpu_free == CPU_NUM {
-                panic!("All applications completed!");
-            }
-            else {
-                drop(inner);
-                loop{};
-            }
-        }
-    }
-}
-
-pub fn run_first_task() {
-    TASK_MANAGER.run_first_task();
-}
-
-pub fn suspend_current_and_run_next() {
-    TASK_MANAGER.run_next_task(TaskStatus::Ready);
-}
-
-pub fn exit_current_and_run_next() {
-    TASK_MANAGER.run_next_task(TaskStatus::Exited);
-}
-
-pub fn current_user_token() -> usize {
-    TASK_MANAGER.get_current_token()
-}
-
-pub fn current_trap_cx() -> &'static mut TrapContext {
-    TASK_MANAGER.get_current_trap_cx()
+pub fn add_initproc() {
+    add_task(INITPROC.clone());
 }

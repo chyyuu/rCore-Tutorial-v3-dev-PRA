@@ -48,6 +48,7 @@ impl StackFrameAllocator {
     pub fn init(&mut self, l: PhysPageNum, r: PhysPageNum) {
         self.current = l.0;
         self.end = r.0;
+        println!("last {} Physical Frames.", self.end - self.current);
     }
 }
 impl FrameAllocator for StackFrameAllocator {
@@ -83,7 +84,7 @@ type FrameAllocatorImpl = StackFrameAllocator;
 
 lazy_static! {
     pub static ref FRAME_ALLOCATOR: Mutex<FrameAllocatorImpl> =
-        Mutex::new(FrameAllocatorImpl::new());
+        unsafe { Mutex::new(FrameAllocatorImpl::new()) };
 }
 
 pub fn init_frame_allocator() {

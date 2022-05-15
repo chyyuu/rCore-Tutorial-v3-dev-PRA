@@ -6,6 +6,7 @@ pub mod stdout;
 pub use sbi::{
     set_timer,
     shutdown,
+    console_getchar,
 };
 
 pub use page_control::{

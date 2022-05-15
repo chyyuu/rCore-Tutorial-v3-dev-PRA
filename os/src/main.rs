@@ -55,6 +55,10 @@ pub extern "C" fn start_kernel(_arg0: usize, _arg1: usize) -> ! {
         println!("I am the first CPU [{}].", cpu_id);
         memory::clear_bss(); // 清空 bss 段
         memory::init();
+        // memory::remap_test();
+        task::add_initproc();
+        println!("after initproc!");
+        loader::list_apps();
         mark_global_init_finished(); // 通知全局初始化已完成
     }
 
@@ -73,12 +77,12 @@ pub extern "C" fn start_kernel(_arg0: usize, _arg1: usize) -> ! {
 
     if config::IS_SINGLE_CORE {
         if cpu_id == config::BOOTSTRAP_CPU_ID {
-            task::run_first_task();
+            task::run_tasks();
         } else {
             loop {}
         }
     } else {
-        task::run_first_task();
+        task::run_tasks();
     }
     unreachable!();
 }
