@@ -22,7 +22,7 @@ pub use processor::{
 
 pub fn suspend_current_and_run_next() {
     // There must be an application running.
-    let task = take_current_task().unwrap();
+    let task = current_task().unwrap();
 
     // ---- access current TCB exclusively
     let mut task_inner = task.inner_lock();
@@ -31,9 +31,6 @@ pub fn suspend_current_and_run_next() {
     task_inner.task_status = TaskStatus::Ready;
     drop(task_inner);
     // ---- release current PCB
-
-    // push back to ready queue.
-    add_task(task);
     // jump to scheduling cycle
     schedule(task_cx_ptr);
 }

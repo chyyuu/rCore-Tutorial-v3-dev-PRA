@@ -39,7 +39,7 @@ extern crate bitflags;
 extern crate lazy_static;
 
 /// 是否已经有核在进行全局初始化
-static GLOBAL_INIT_STARTED: AtomicBool = AtomicBool::new(false);
+// static GLOBAL_INIT_STARTED: AtomicBool = AtomicBool::new(false);
 /// 全局初始化是否已结束
 static GLOBAL_INIT_FINISHED: AtomicBool = AtomicBool::new(false);
 
@@ -51,7 +51,7 @@ lazy_static::lazy_static! {
 pub extern "C" fn start_kernel(_arg0: usize, _arg1: usize) -> ! {
     let cpu_id = arch::get_cpu_id();
     // 只有一个核能进入这个 if 并执行全局初始化操作
-    if can_do_global_init() {
+    if cpu_id == config::BOOTSTRAP_CPU_ID {
         println!("I am the first CPU [{}].", cpu_id);
         memory::clear_bss(); // 清空 bss 段
         memory::init();
@@ -88,9 +88,9 @@ pub extern "C" fn start_kernel(_arg0: usize, _arg1: usize) -> ! {
 }
 
 /// 是否还没有核进行全局初始化，如是则返回 true
-fn can_do_global_init() -> bool {
-    GLOBAL_INIT_STARTED.compare_exchange(false, true, Ordering::Acquire, Ordering::Relaxed).is_ok()
-}
+// fn can_do_global_init() -> bool {
+//     GLOBAL_INIT_STARTED.compare_exchange(false, true, Ordering::Acquire, Ordering::Relaxed).is_ok()
+// }
 
 /// 标记那些全局只执行一次的启动步骤已完成。
 /// 内核必须由 cpu_id 等于 AP_CAN_INIT 初始值的核先启动并执行这些全局只需要一次的操作，然后其他的核才能启动 

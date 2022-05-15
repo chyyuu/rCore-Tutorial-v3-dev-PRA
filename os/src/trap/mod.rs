@@ -12,6 +12,7 @@ use riscv::register::{
     scause::{self, Exception, Interrupt, Trap},
     sie, stval, stvec,
 };
+use crate::arch::get_cpu_id;
 
 global_asm!(include_str!("trap.S"));
 
@@ -112,7 +113,7 @@ pub fn trap_return() -> ! {
 
 #[no_mangle]
 pub fn trap_from_kernel() -> ! {
-    panic!("a trap {:?} from kernel!", scause::read().cause());
+    panic!("a trap {:?} from kernel[{}]!", scause::read().cause(), get_cpu_id());
 }
 
 pub use context::TrapContext;

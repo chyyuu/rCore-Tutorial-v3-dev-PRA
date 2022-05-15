@@ -37,7 +37,7 @@ impl PidAllocator {
 
 lazy_static! {
     static ref PID_ALLOCATOR: Mutex<PidAllocator> =
-        unsafe { Mutex::new(PidAllocator::new()) };
+        Mutex::new(PidAllocator::new());
 }
 
 pub struct PidHandle(pub usize);
