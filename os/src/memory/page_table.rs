@@ -178,7 +178,6 @@ pub fn translated_str(token: usize, ptr: *const u8) -> String {
     string
 }
 
-#[allow(unused)]
 pub fn translated_ref<T>(token: usize, ptr: *const T) -> &'static T {
     let page_table = PageTable::from_token(token);
     page_table

@@ -93,13 +93,13 @@ impl Inode {
 
     pub fn create(&self, name: &str) -> Option<Arc<Inode>> {
         let mut fs = self.fs.lock();
-        let op = |root_inode: &DiskInode| {
+        let op = |root_inode: &mut DiskInode| {
             // assert it is a directory
             assert!(root_inode.is_dir());
             // has the file been created?
             self.find_inode_id(name, root_inode)
         };
-        if self.read_disk_inode(op).is_some() {
+        if self.modify_disk_inode(op).is_some() {
             return None;
         }
         // create a new file

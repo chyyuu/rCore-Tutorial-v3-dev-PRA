@@ -2,6 +2,7 @@ mod context;
 mod manager;
 mod pid;
 mod processor;
+mod signal;
 mod switch;
 #[allow(clippy::module_inception)]
 mod task;
@@ -11,14 +12,16 @@ use alloc::sync::Arc;
 pub use context::TaskContext;
 use lazy_static::*;
 use manager::fetch_task;
+use manager::remove_from_pid2task;
 use switch::__switch;
 use task::{TaskControlBlock, TaskStatus};
 
-pub use manager::add_task;
+pub use manager::{add_task, pid2task};
 pub use pid::{pid_alloc, KernelStack, PidHandle};
 pub use processor::{
     current_task, current_trap_cx, current_user_token, run_tasks, schedule, take_current_task,
 };
+pub use signal::SignalFlags;
 
 pub fn suspend_current_and_run_next() {
     // There must be an application running.
@@ -38,6 +41,8 @@ pub fn suspend_current_and_run_next() {
 pub fn exit_current_and_run_next(exit_code: i32) {
     // take from Processor
     let task = take_current_task().unwrap();
+    // remove from pid2task
+    remove_from_pid2task(task.getpid());
     // **** access current TCB exclusively
     let mut inner = task.inner_lock();
     // Change status to Zombie
@@ -59,6 +64,8 @@ pub fn exit_current_and_run_next(exit_code: i32) {
     inner.children.clear();
     // deallocate user space
     inner.memory_set.recycle_data_pages();
+    // drop file descriptors
+    inner.fd_table.clear();
     drop(inner);
     // **** release current PCB
     // drop task manually to maintain rc correctly
@@ -78,4 +85,16 @@ lazy_static! {
 
 pub fn add_initproc() {
     add_task(INITPROC.clone());
+}
+
+pub fn check_signals_of_current() -> Option<(i32, &'static str)> {
+    let task = current_task().unwrap();
+    let task_inner = task.inner_lock();
+    task_inner.signals.check_error()
+}
+
+pub fn current_add_signal(signal: SignalFlags) {
+    let task = current_task().unwrap();
+    let mut task_inner = task.inner_lock();
+    task_inner.signals |= signal;
 }
