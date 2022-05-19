@@ -715,8 +715,7 @@ fn io_init() {
 }
 
 lazy_static! {
-    static ref PERIPHERALS: Mutex<Peripherals> =
-        Mutex::new(Peripherals::take().unwrap());
+    static ref PERIPHERALS: Mutex<Peripherals> = Mutex::new(Peripherals::take().unwrap());
 }
 
 fn init_sdcard() -> SDCard<SPIImpl<SPI0>> {

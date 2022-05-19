@@ -1,4 +1,4 @@
-use super::TaskControlBlock;
+use super::{ProcessControlBlock, TaskControlBlock};
 use spin::Mutex;
 use alloc::collections::{BTreeMap, VecDeque};
 use alloc::sync::Arc;
@@ -25,13 +25,10 @@ impl TaskManager {
 
 lazy_static! {
     pub static ref TASK_MANAGER: Mutex<TaskManager> = Mutex::new(TaskManager::new());
-    pub static ref PID2TCB: Mutex<BTreeMap<usize, Arc<TaskControlBlock>>> = Mutex::new(BTreeMap::new());
+    pub static ref PID2PCB: Mutex<BTreeMap<usize, Arc<ProcessControlBlock>>> = Mutex::new(BTreeMap::new());
 }
 
 pub fn add_task(task: Arc<TaskControlBlock>) {
-    PID2TCB
-        .lock()
-        .insert(task.getpid(), Arc::clone(&task));
     TASK_MANAGER.lock().add(task);
 }
 
@@ -39,13 +36,17 @@ pub fn fetch_task() -> Option<Arc<TaskControlBlock>> {
     TASK_MANAGER.lock().fetch()
 }
 
-pub fn pid2task(pid: usize) -> Option<Arc<TaskControlBlock>> {
-    let map = PID2TCB.lock();
+pub fn pid2process(pid: usize) -> Option<Arc<ProcessControlBlock>> {
+    let map = PID2PCB.lock();
     map.get(&pid).map(Arc::clone)
 }
 
-pub fn remove_from_pid2task(pid: usize) {
-    let mut map = PID2TCB.lock();
+pub fn insert_into_pid2process(pid: usize, process: Arc<ProcessControlBlock>) {
+    PID2PCB.lock().insert(pid, process);
+}
+
+pub fn remove_from_pid2process(pid: usize) {
+    let mut map = PID2PCB.lock();
     if map.remove(&pid).is_none() {
         panic!("cannot find pid {} in pid2task!", pid);
     }

@@ -1,7 +1,7 @@
 use super::__switch;
 use super::add_task;
 use super::{fetch_task, TaskStatus};
-use super::{TaskContext, TaskControlBlock};
+use super::{ProcessControlBlock, TaskContext, TaskControlBlock};
 use crate::trap::TrapContext;
 use crate::arch::get_cpu_id;
 use crate::config::CPU_NUM;
@@ -82,10 +82,13 @@ pub fn current_task() -> Option<Arc<TaskControlBlock>> {
     PROCESSOR[get_cpu_id()].lock().current()
 }
 
+pub fn current_process() -> Arc<ProcessControlBlock> {
+    current_task().unwrap().process.upgrade().unwrap()
+}
+
 pub fn current_user_token() -> usize {
     let task = current_task().unwrap();
-    let token = task.inner_lock().get_user_token();
-    token
+    task.get_user_token()
 }
 
 pub fn current_trap_cx() -> &'static mut TrapContext {
@@ -93,6 +96,20 @@ pub fn current_trap_cx() -> &'static mut TrapContext {
         .unwrap()
         .inner_lock()
         .get_trap_cx()
+}
+
+pub fn current_trap_cx_user_va() -> usize {
+    current_task()
+        .unwrap()
+        .inner_lock()
+        .res
+        .as_ref()
+        .unwrap()
+        .trap_cx_user_va()
+}
+
+pub fn current_kstack_top() -> usize {
+    current_task().unwrap().kstack.get_top()
 }
 
 pub fn schedule(switched_task_cx_ptr: *mut TaskContext) {

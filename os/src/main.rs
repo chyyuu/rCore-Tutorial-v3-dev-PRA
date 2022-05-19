@@ -19,6 +19,7 @@ mod console;
 mod drivers;
 mod fs;
 mod memory;
+mod sync;
 mod config;
 mod lang_items;
 mod timer;
